@@ -8,16 +8,19 @@ using CommandLine;
 using CommandLine.Text;
 
 namespace arzedit
-{
+{   // TODO: Add resource base when packing and crosscheck if files exist, ideal would be just point to mod folder and it does all work
     class Program
     {
         // static string ArzFile = "database.arz";
         // static string OutputFile = "database2.arz";
+        const string VERSION = "0.1";
         static byte[] mdata = null;
         static byte[] footer = new byte[16];
         public static List<string> strtable = null;
         public static List<int> strrefcount = null;
         public static SortedDictionary<string, int> strsearchlist = null;
+        public static HashSet<string> resfiles = null;
+        public static HashSet<string> dbrfiles = null;
         static List<ARZRecord> rectable = null;
         static SortedList<string, int> recsearchlist = null;
         static void Main(string[] args)
@@ -266,7 +269,7 @@ namespace arzedit
                         outpath = Path.GetFullPath(opt.OutputPath);
 
                     Console.WriteLine("Extracting to \"{0}\" ...", outpath);
-                    
+
                     char ans = 'n';
                     bool overwriteall = opt.ForceOverwrite;
                     start = DateTime.Now;
@@ -309,10 +312,190 @@ namespace arzedit
                     end = DateTime.Now;
                     Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
                 }
+                else if (iVerb == "pack")
+                {
+                    PackOptions opt = iOpt as PackOptions;
+                    string packfolder = Path.GetFullPath(opt.InputPath);
+                    if (string.IsNullOrEmpty(opt.OutputFile)) {
+                        Console.WriteLine("Please specify output file as second parameter!");
+                        PrintUsage();
+                        return;
+                    }
+
+                    string[] tfolders = null;
+                    if (opt.TemplatePaths != null)
+                    {
+                        tfolders = opt.TemplatePaths;
+                    } else
+                    {
+                        tfolders = new string[1] { opt.InputPath };
+                    }
+
+                    Dictionary<string, TemplateNode> templates = new Dictionary<string, TemplateNode>();
+                    Console.Write("Parsing templates ... ");
+                    DateTime start = DateTime.Now;
+                    foreach (string tfolder in tfolders)
+                    {
+                        string tfullpath = Path.GetFullPath(tfolder);
+                        string[] alltemplates = Directory.GetFiles(tfullpath, "*.tpl", SearchOption.AllDirectories);
+                        foreach (string tfile in alltemplates)
+                        {
+                            string[] tstrings = File.ReadAllLines(tfile);
+                            string tpath = tfile.Substring(tfullpath.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
+                            if (tpath.StartsWith("/")) tpath = tpath.Substring(1);
+                            // TODO: sort out database prefix
+                            if (!tpath.StartsWith("database/")) tpath = "database/" + tpath;
+                            TemplateNode ntemplate = new TemplateNode(null, tpath);
+                            ntemplate.ParseNode(tstrings, 0);
+                            if (templates.ContainsKey(tpath))
+                                Console.WriteLine("Template {0} already in a list, overwriting", tpath); // DEBUG
+                            templates[tpath] = ntemplate;
+                        }
+                    }
+
+                    foreach (KeyValuePair<string, TemplateNode> tpln in templates)
+                    {
+                        // Console.WriteLine("{0} - {1} name {2}", tpln.Key, tpln.Value.kind, tpln.Value.values["name"]);
+                        tpln.Value.FillIncludes(templates);
+                    }
+
+                    DateTime end = DateTime.Now;
+                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+                    // Got templates
+                    // create empty strtable
+                    bool peek = false;
+                    List<string> peekstrtable = null;
+                    List<ARZRecord> peekrectable = null;
+                    if (!string.IsNullOrEmpty(opt.PeekFile)) {
+                        LoadFile(opt.PeekFile);
+                        peekstrtable = strtable;
+                        peekrectable = rectable;
+                        peek = true;
+                    }
+
+                    strtable = new List<string>();
+                    rectable = new List<ARZRecord>();
+                    if (opt.CheckReferences)
+                    {
+                        string[] resfolders = new string[1] { Path.Combine(packfolder, "resources") };
+                        foreach (string resfolder in resfolders)
+                        {
+                            if (Directory.Exists(resfolder))
+                            {
+                                if (resfiles == null)
+                                    resfiles = new HashSet<string>();
+                                string[] allresfiles = Directory.GetFiles(resfolder, "*.*", SearchOption.AllDirectories);
+                                foreach (string aresfile in allresfiles)
+                                {
+                                    string relresfile = aresfile.Substring(resfolder.Length).Replace(Path.DirectorySeparatorChar, '/');
+                                    if (relresfile.StartsWith("/")) relresfile = relresfile.Substring(1);
+                                    // Console.WriteLine("Adding reasource file \"{0}\"", relresfile); // DEBUG
+                                    resfiles.Add(relresfile);
+                                };
+                            }
+                        }
+
+                        if (resfiles != null && resfiles.Count == 0) // No files to reference to - disable option
+                        {
+                            // Console.WriteLine("Check references option was passed, but there are no resource files to be referenced against. Disabling.");
+                            resfiles = null;
+                            // opt.CheckReferences = false;
+                        }
+                    }
+
+
+
+                    // Parse record
+                    Console.Write("Packing ... ");
+                    start = DateTime.Now;
+                    string[] alldbrs = Directory.GetFiles(packfolder, "*.dbr", SearchOption.AllDirectories);
+                    if (opt.CheckReferences) {
+                        dbrfiles = new HashSet<string>();
+                        foreach (string dbrfile in alldbrs)
+                        { // TODO: Duplicated code here Copy/Pasted
+                            string recname = dbrfile.Substring(packfolder.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
+                            if (recname.StartsWith("/")) recname = recname.Substring(1);
+                            if (recname.StartsWith("database/")) recname = recname.Substring("database/".Length);
+                            if (!recname.StartsWith("records/")) continue; // TODO: Fix Me, need proper subfolder path passed as parameter
+                            dbrfiles.Add(recname);
+                        }
+                    }
+                    using (ProgressBar progress = new ProgressBar())
+                    {
+                        int cf = 0;
+                        foreach (string dbrfile in alldbrs)
+                        {
+                            string[] recstrings = File.ReadAllLines(dbrfile);
+                            string recname = dbrfile.Substring(packfolder.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
+                            if (recname.StartsWith("/")) recname = recname.Substring(1);
+                            if (recname.StartsWith("database/")) recname = recname.Substring("database/".Length);
+                            if (!recname.StartsWith("records/")) continue; // TODO: Fix Me, need proper subfolder path passed as parameter
+                                                                           // Console.WriteLine("packing {0} to {1}", dbrfile, recname);
+                                                                           //*
+                            ARZRecord nrec = new ARZRecord(recname, recstrings, templates);
+                            rectable.Add(nrec);
+
+                            if (peek) // Peek and see if we have same data
+                            {
+                                ARZRecord peekrec = peekrectable.Find(pr => peekstrtable[pr.rfid] == strtable[nrec.rfid]);
+                                // Console.WriteLine("Comparing {0}", strtable[nrec.rfid]);
+                                if (peekrec.rtype != nrec.rtype) Console.WriteLine("Type differs \"{0}\" != \"{1}\"", nrec.rtype, peekrec.rtype);
+                                if (peekrec.entries.Count != nrec.entries.Count) Console.WriteLine("Entry count differs peek {0} != new {1}", peekrec.entries.Count, nrec.entries.Count);
+                                else
+                                {
+                                    for (int i = 0; i < nrec.entries.Count; i++)
+                                    {
+                                        ARZEntry ne = nrec.entries[i];
+                                        ARZEntry pe = peekrec.entries[i];
+                                        if (peekstrtable[pe.dstrid] != strtable[ne.dstrid]) Console.WriteLine("Entry {0} name differs peek \"{1}\" != new \"{2}\"", i, peekstrtable[pe.dstrid], strtable[ne.dstrid]);
+                                        if (pe.dtype != ne.dtype) Console.WriteLine("Entry {0} type differs peek {1} != new {2}", i, pe.dtype, ne.dtype);
+                                        else
+                                        if (pe.dcount != ne.dcount) Console.WriteLine("Entry {0} array size differs peek {1} != new {2}", i, pe.dcount, ne.dcount);
+                                        else
+                                        {
+                                            for (int k = 0; k < pe.dcount; k++)
+                                            {
+                                                if (pe.dtype == 0 || pe.dtype == 1 || pe.dtype == 3)
+                                                {
+                                                    if (pe.values[k] != ne.values[k]) Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", strtable[ne.dstrid], k, pe.values[k], ne.values[k], strtable[nrec.rfid]);
+                                                }
+                                                else
+                                                    if (peekstrtable[pe.values[k]] != strtable[ne.values[k]])
+                                                    Console.WriteLine("Entry {0} value {1} strings differ peek \"{2}\" != new \"{3}\"", i, k, peekstrtable[pe.values[k]] != strtable[ne.values[k]]);
+                                            }
+                                        }
+                                    }
+                                }
+                            } // If peek
+                            // Show Progress
+                            progress.Report((double)cf++ / alldbrs.Length);
+                            //*/
+                        } // foreach dbrfile in ...
+                    } // using progress;
+                    end = DateTime.Now;
+                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+                    if (opt.ForceOverwrite || !File.Exists(opt.OutputFile) || char.ToUpper(Ask(string.Format("Output file \"{0}\" exists, overwrite? [y/n] n: ", Path.GetFullPath(opt.OutputFile)), "yYnN", 'N')) == 'Y')
+                    {
+                        start = DateTime.Now;
+                        Console.Write("Saving database ... ");
+                        CompactStringlist();
+                        SaveData(opt.OutputFile);
+                        end = DateTime.Now;
+                        Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+                    }
+                    else
+                    {
+                        Console.WriteLine("Aborted by user.");
+                    }
+                    
+                    return;
+                }
                 else if (iVerb == "get")
                 {
                     GetOptions opt = iOpt as GetOptions;
-                    Console.Write("Getting records is not implemented yet!");
+                    Console.WriteLine("Getting records is not implemented yet!");
                     return;
                 }
 
@@ -471,15 +654,26 @@ namespace arzedit
 
         static void PrintUsage()
         {
-            Console.WriteLine("Usage:");
-            Console.WriteLine("{0} <set|get|extract> <suboptions>\n", Path.GetFileName(System.Reflection.Assembly.GetExecutingAssembly().Location));
-            Console.Write("set <input file> [-o <output file>] [-y] [-r <record> {-e <entry1> [<entry2> ...] | -f <record file>}] [-p <patchfile1> [<patchfile2> ...]] [-b <base folder> [-s <subfolder>]] ");
+            Console.WriteLine("\nGrim Dawn Arz Editor, v{0}", VERSION);
+            Console.WriteLine("\nUsage:");
+            Console.WriteLine();
+            Console.WriteLine("{0} <pack|set|get|extract> <suboptions>\n", Path.GetFileName(System.Reflection.Assembly.GetExecutingAssembly().Location));
+            Console.WriteLine("pack <mod base> <output file> [-t <template base1> [<template base2> ...]] [-yr]\n");
+            Console.WriteLine("  <mod base>         mod base path where loose *.dbr and *.tpl files reside");
+            Console.WriteLine("                     usually has /database/ and /resources/ folders");
+            Console.WriteLine("                     Note: all *.dbr and *.tpl files in this directory");
+            Console.Write("                     and under will be packed to db, keep it tidy.");
             var ht = new HelpText();
+            ht.AddDashesToOption = true;
+            ht.AddOptions(new PackOptions());
+            Console.WriteLine(ht);
+            Console.Write("set <input file> [-o <output file>] [-y] [-r <record> {-e <entry1> [<entry2> ...] | -f <record file>}] [-p <patchfile1> [<patchfile2> ...]] [-b <base folder> [-s <subfolder>]] ");
+            ht = new HelpText();
             ht.AddDashesToOption = true;
             ht.AddOptions(new SetOptions());
             Console.WriteLine(ht);
-            Console.Write("get <input file> -r <record> [-e <entry1> [<entry2 ...>]]");
-            Console.Write("Not implemented yet!;");
+            Console.WriteLine("get <input file> -r <record> [-e <entry1> [<entry2 ...>]]");
+            Console.Write("\nNot implemented yet!;");
             ht = new HelpText();
             ht.AddDashesToOption = true;
             ht.AddOptions(new GetOptions());
@@ -702,6 +896,8 @@ namespace arzedit
             public GetOptions GetVerb { get; set; }
             [VerbOption("extract", HelpText = "Extract records from database")]
             public ExtractOptions ExtractVerb { get; set; }
+            [VerbOption("pack", HelpText = "Pack records to database")]
+            public PackOptions PackVerb { get; set; }
             [HelpOption]
             public string GetUsage()
             {
@@ -769,6 +965,27 @@ namespace arzedit
             public string OutputPath { get; set; }
             [Option('y', "overwrite", HelpText = "Force overwrite files in target folder, be careful, make backups!")]
             public bool ForceOverwrite { get; set; }
+            [HelpOption]
+            public string GetUsage()
+            {
+                return HelpText.AutoBuild(this, (HelpText current) => HelpText.DefaultParsingErrorsHandler(this, current));
+            }
+        } 
+
+        class PackOptions
+        {
+            [ValueOption(0)]
+            public string InputPath { get; set; }
+            [ValueOption(1)]
+            public string OutputFile { get; set; }
+            [OptionArray('t', "tbase", HelpText = "Folder(s) containing templates, use when templates are not in input path")]
+            public string[] TemplatePaths { get; set; }
+            [Option('p', "peek", HelpText = "Peek at database and compare results - debugging option")]
+            public string PeekFile { get; set; }
+            [Option('y', "overwrite", HelpText = "Force overwrite target file, make backups!")]
+            public bool ForceOverwrite { get; set; }
+            [Option('r', "refs", HelpText = "Check if referenced files exist. Needs \"resources\" folder in <mod base>. May generate a lot of messages.")]
+            public bool CheckReferences { get; set; }
             [HelpOption]
             public string GetUsage()
             {
@@ -961,6 +1178,60 @@ namespace arzedit
         public byte[] cData;
         public byte[] aData;
         public List<ARZEntry> entries = null;
+
+        public ARZRecord(string rname, string[] rstrings, Dictionary<string, TemplateNode> templates)
+        {
+            rfid = Program.ModifyString(-1, rname);
+            rtype = ""; // TODO: IMPORTANT: How record type is determined, last piece of info
+            this.rdFileTime = DateTime.Now;
+            entries = new List<ARZEntry>();
+            TemplateNode tpl = null;
+            foreach (string estr in rstrings)
+            {
+                TemplateNode vart = null;
+                string[] eexpl = estr.Split(',');
+                string varname = eexpl[0];
+                string vvalue = eexpl[1];
+                if (varname == "templateName") {
+                    try
+                    {
+                        tpl = templates[vvalue];
+                        vart = TemplateNode.TemplateNameVar;
+                    } catch (KeyNotFoundException e)
+                    {
+                        Console.WriteLine("Template file \"{0}\" used by record {1} not found!", vvalue, rname);
+                        throw e;
+                    }
+                } else {
+                    // Find variable in templates
+                    if (tpl != null) // Find variable
+                        vart = tpl.FindVariable(varname);
+                }
+                if (varname.ToLower() == "class") rtype = vvalue;
+                /*
+                foreach (KeyValuePair<string, TemplateNode> tkv in templates)
+                {
+                    List<TemplateNode> nodeswithvars = tkv.Value.findValue(varname);
+                    found |= nodeswithvars.Count > 0;
+                    foreach (TemplateNode tn in nodeswithvars)
+                    {
+                        // Console.WriteLine("Found variable in {0} {1}", tkv.Key, tn.values.ToString());
+                    }
+                }
+                */
+                
+                if (vart == null)
+                {
+                    Console.WriteLine("Variable {0} not found in any included templates", varname);
+                }
+                else {
+                    ARZEntry newentry = new ARZEntry(estr, vart, rname);
+                    entries.Add(newentry);                    
+                }
+            }
+            this.PackData();
+        }
+
         public ARZRecord(BinaryReader rdata)
         {
             ReadBytes(rdata);
@@ -1003,8 +1274,11 @@ namespace arzedit
             using (MemoryStream mStream = new MemoryStream(datasize)) {
                 using (BinaryWriter bWriter = new BinaryWriter(mStream))
                 {
-                    mStream.Seek(0, SeekOrigin.Begin);
+                    mStream.Seek(0, SeekOrigin.Begin);                    
                     foreach (ARZEntry e in entries) {
+                        // e.dcount;
+                        e.dcount = (ushort) e.values.Length;
+                        // Console.WriteLine("Packing {0} - Len: {1} ", Program.strtable[e.dstrid], e.dcount); // DEBUG
                         e.WriteBytes(bWriter);
                     }
                 }
@@ -1037,7 +1311,8 @@ namespace arzedit
         public ushort dcount;
         public int dstrid;
         public int[] values;
-        public bool changed = false; // TODO: everhead
+        public bool changed = false; // TODO: overhead
+        public bool isarray = false;
         static List<string> strtable = null;
         // static SortedList<string, int> strsearchlist = null;
         public static List<string> StrTable { get { if (strtable == null) strtable = Program.strtable; return strtable; } set { strtable = value; } }
@@ -1046,6 +1321,89 @@ namespace arzedit
         public ARZEntry(BinaryReader edata)
         {
             ReadBytes(edata);
+        }
+
+        public ARZEntry(string estr, TemplateNode tpl, string recname)
+        {
+            string vtype = null;
+            string entryname = estr.Split(',')[0];
+
+            try
+            {
+                vtype = tpl.values["type"];
+            }
+            catch (KeyNotFoundException e) {
+                Console.WriteLine("ERROR: Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
+                throw e; // rethrow            
+            }
+
+            isarray = tpl.values.ContainsKey("class") && tpl.values["class"] == "array"; // This is an array act accordingly when packing strings
+
+            if (vtype.StartsWith("file_")) {
+                // Check for resources
+                if (Program.resfiles != null || Program.dbrfiles != null)
+                {
+                    string[] rfiles = null;
+                    if (!isarray) rfiles = new string[1] { estr.Split(',')[1] };
+                    else { rfiles = estr.Split(',')[1].Split(';'); };
+
+                    if (vtype == "file_dbr" && Program.dbrfiles != null)
+                    {
+                        foreach (string rfile in rfiles)
+                        {
+                            if (!Program.dbrfiles.Contains(rfile))
+                            {
+                                Console.WriteLine("Missing database file \"{0}\" referenced by \"{1}\" in record \"{2}\".", rfile, entryname, recname);
+                            }
+                        }
+                    } else if (Program.resfiles != null)
+                    {
+                        foreach (string rfile in rfiles)
+                        {
+                            if (!Program.resfiles.Contains(rfile))
+                            {
+                                Console.WriteLine("Missing record file \"{0}\" referenced by \"{1}\" in record \"{2}\".", rfile, entryname, recname);
+                            }
+                        }
+                    }
+                }
+
+                vtype = "string"; // Make it string
+            }
+
+            switch (vtype) {
+                case "string":
+/* Got tired of this, all files under one hood - string
+                case "file_dbr":
+                case "file_tex":
+                case "file_msh":
+                case "file_lua":
+                case "file_qst":
+                case "file_anm":
+                case "file_ssh":
+*/
+                case "equation":
+                    dtype = 2; // string type
+                    break;
+                case "real":
+                    dtype = 1;
+                    break;
+                case "bool":
+                    dtype = 3;
+                    break;
+                case "int":
+                    dtype = 0;
+                    break;
+                default:
+                    Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
+                    throw new Exception("Unknown variable type");
+                    break;
+            }
+
+            values = new int[0];
+            dstrid = Program.ModifyString(-1, entryname);
+            if (!TryAssign(estr))
+                throw new Exception(string.Format("Error assigning entry {0}", entryname));
         }
 
         public void ReadBytes(BinaryReader edata) {
@@ -1106,7 +1464,7 @@ namespace arzedit
                 // TODO: All kinds of weirdiness with string packing, simplest solution would be ignoring string variable parsing altogether, but if we want to repack correctly we'll need this
                 if (dtype == 2) // If it is string it may be stored as single value, or may have sequence of empty fields which are condensed to a single entry with ;'s inside
                 {
-                    if (values.Length == 1)
+                    if (!isarray || values.Length == 1)
                     {
                         strs = new string[1] { estrs[1] };
                     } else
@@ -1136,9 +1494,9 @@ namespace arzedit
                 }                
             }
 
-            // DEBUG: array size changing
+            // DEBUG: array size changing but not creating new record
             //*
-            if (strs.Length != values.Length)            {
+            if (values.Length != 0 && strs.Length != values.Length)            {
                 Console.WriteLine("WARN: Array size mismatch: assigning {0} values to array of size {1}.\nSetting: {2} -> {3}", strs.Length, values.Length, this, fromstr);
                 // return false;
             }//*/
@@ -1196,6 +1554,7 @@ namespace arzedit
             if (strmodified || values.Length != nvalues.Length || !values.SequenceEqual(nvalues))
             {
                 values = nvalues;
+                this.dcount = (ushort)values.Length;
                 changed = true;
             }
             return true;
@@ -1259,4 +1618,146 @@ namespace arzedit
             StringTableSize = bytes.ReadUInt32();
         }
     }
+
+    // Template Objects
+    public class TemplateNode {
+        public static readonly TemplateNode TemplateNameVar;
+        public string TemplateFile = null;
+        public TemplateNode parent = null;
+        public string kind = "";
+        public Dictionary<string, string> values = new Dictionary<string, string>();
+        public SortedDictionary<string, TemplateNode> varsearch = null;
+        public List<TemplateNode> subitems = new List<TemplateNode>();
+        public List<TemplateNode> includes = new List<TemplateNode>();
+
+        static TemplateNode()
+        {
+            TemplateNameVar = new TemplateNode();
+            TemplateNameVar.kind = "variable";
+            TemplateNameVar.values["name"] = "templateName";
+            TemplateNameVar.values["class"] = "variable";
+            TemplateNameVar.values["type"] = "string";
+        }
+
+        public TemplateNode(TemplateNode aparent = null, string aTemplateFile = null) {
+            parent = aparent;
+            TemplateFile = aTemplateFile;
+            if (aparent == null) // I am root
+                varsearch = new SortedDictionary<string, TemplateNode>();
+        }
+
+        public string GetTemplateFile()
+        {
+            if (!string.IsNullOrEmpty(TemplateFile))
+                return TemplateFile;
+            else 
+                if (parent != null) return parent.GetTemplateFile(); 
+                else return null;
+        }
+
+        public int ParseNode(string[] parsestrings, int parsestart = 0) {
+            int i = parsestart;
+            while (string.IsNullOrWhiteSpace(parsestrings[i])) i++;
+            kind = (parsestrings[i++].Trim().ToLower()); // Check for proper kind
+            while (parsestrings[i].Trim() != "{") i++; // Find Opening bracket
+            i++;
+            while (string.IsNullOrWhiteSpace(parsestrings[i])) i++;
+            while (parsestrings[i].Trim() != "}")
+            {
+                if (string.IsNullOrWhiteSpace(parsestrings[i])) { i++; continue; }
+                if (parsestrings[i].Trim().Contains('='))
+                { // This is entry value
+                    string[] sval = parsestrings[i].Split('=');
+                    string akey = (sval[0].Trim());
+                    string aval = (sval[1].Trim().Trim('"'));
+                    values[akey] = aval;
+                } else
+                { // subitem
+                    TemplateNode sub = new TemplateNode(this);
+                    i = sub.ParseNode(parsestrings, i);
+                    subitems.Add(sub);
+                }
+                i++;
+            }
+            return i;
+        }
+        
+        public List<TemplateNode> findValue(string aval) {
+            List<TemplateNode> res = new List<TemplateNode>();
+            if (values.ContainsValue(aval)) res.Add(this);
+            foreach (TemplateNode sub in subitems)
+            {
+                res.AddRange(sub.findValue(aval));
+            }
+            return res;
+        }
+
+        public TemplateNode FindVariable(string aname) {
+            if (parent == null && varsearch.ContainsKey(aname))
+            {
+                return varsearch[aname];
+            }
+
+            if (kind == "variable" && values.ContainsKey("name") && values["name"] == aname)
+            {
+                if (parent == null) varsearch.Add(aname, this);
+                return this;
+            }
+            // Not this, recurse subitems:
+            TemplateNode res = null;
+            foreach (TemplateNode sub in subitems) {
+                res = sub.FindVariable(aname);
+                if (res != null)
+                {
+                    if (parent == null) varsearch.Add(aname, res);
+                    return res;
+                }
+            }
+            // No entry in subitems, check includes
+            foreach (TemplateNode incl in includes)
+            {
+                res = incl.FindVariable(aname);
+                if (res != null)
+                {
+                    if (parent == null) varsearch.Add(aname, res);
+                    return res;
+                }
+            }
+            // Giving up:
+            return null;
+        }
+
+        public void FillIncludes(Dictionary<string, TemplateNode> alltempl) {
+            foreach (TemplateNode sub in subitems)
+            {
+                if (sub.kind == "variable" && sub.values.ContainsKey("type") && sub.values["type"] == "include")
+                {
+                    string incstr = sub.values.ContainsKey("value") ? sub.values["value"] : "";
+                    if (incstr == "")
+                        incstr = sub.values.ContainsKey("defaultValue") ? sub.values["defaultValue"] : "";
+                    incstr = incstr.ToLower().Replace("%template_dir%", "").Replace(Path.DirectorySeparatorChar, '/');
+                    if (incstr.StartsWith("/")) incstr = incstr.Substring(1);
+                    if (alltempl.ContainsKey(incstr))
+                    {
+                        // Console.WriteLine("Include {0}", incstr);
+                        // Check for cycles
+                        TemplateNode itemplate = alltempl[incstr];
+                        if (itemplate == this || includes.Contains(itemplate))
+                            Console.WriteLine("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
+                        includes.Add(itemplate);
+                    } else
+                    {
+                        TemplateNode tproot = this;
+                        while (tproot.parent != null) tproot = tproot.parent;
+                        string intemplate = alltempl.First(t => t.Value == tproot).Key;
+                        Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate);
+                    }
+                }
+                else if (sub.kind == "group") {
+                    sub.FillIncludes(alltempl);
+                }
+            }
+        }
+    }
+
 }
