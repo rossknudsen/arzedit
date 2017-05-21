@@ -13,7 +13,7 @@ namespace arzedit
     {
         // static string ArzFile = "database.arz";
         // static string OutputFile = "database2.arz";
-        const string VERSION = "0.1";
+        const string VERSION = "0.1b3";
         static byte[] mdata = null;
         static byte[] footer = new byte[16];
         public static List<string> strtable = null;
@@ -23,139 +23,148 @@ namespace arzedit
         public static HashSet<string> dbrfiles = null;
         static List<ARZRecord> rectable = null;
         static SortedList<string, int> recsearchlist = null;
-        static void Main(string[] args)
+        static int Main(string[] args)
         {
             var voptions = new VerbOptions();
             // ParserResult<object> result = CommandLine.Parser.Default.ParseArguments<SetOptions, GetOptions>(args);
             string iVerb = ""; object iOpt = null;
-            if (args.Length > 0  && Parser.Default.ParseArguments(args, voptions, (verb, subOptions) => {
+            if (args.Length > 0 && Parser.Default.ParseArguments(args, voptions, (verb, subOptions) => {
                 iVerb = verb; iOpt = subOptions;
-                })) {
+            }))
+            {
                 if (iVerb == "set")
                 {
-                    SetOptions opt = iOpt as SetOptions;
-                    if (string.IsNullOrEmpty(opt.OutputFile)) opt.OutputFile = opt.InputFile;
+                    return ProcessSetVerb(iOpt as SetOptions);
+                }
+                else if (iVerb == "extract")
+                {
+                    return ProcessExtractVerb(iOpt as ExtractOptions);
+                }
+                else if (iVerb == "pack")
+                {
+                    return ProcessPackVerb(iOpt as PackOptions);
+                }
+                else if (iVerb == "get")
+                {
+                    GetOptions opt = iOpt as GetOptions;
+                    Console.WriteLine("Getting records is not implemented yet!");
+                    return 1;
+                }
+                return 1; // Should not ever be here, but just in case unknown verb pops up
+            } else {
+                PrintUsage();
+                return 1;
+            }
+        }
 
-                    // List<string> entries = new List<string>(opt.SetEntries);
-                    // DEBUG:
-                    // Console.WriteLine("In: {0}; Out: {1}; Rec: {2}; Entries #: {3}", opt.InputFile, opt.OutputFile, opt.SetRecord, entries.Count);
-                    Console.Write("Parsing database ... ");
-                    DateTime start = DateTime.Now;
-                    if (!LoadFile(opt.InputFile)) return;
-                    DateTime end = DateTime.Now;
-                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
-                    // Pack everything under the base
-                    bool bchanged = false;
+        static int ProcessSetVerb(SetOptions opt)
+        {
+            if (string.IsNullOrEmpty(opt.OutputFile)) opt.OutputFile = opt.InputFile;
 
-                    if (!string.IsNullOrEmpty(opt.SetBase))
+            // List<string> entries = new List<string>(opt.SetEntries);
+            // DEBUG:
+            // Console.WriteLine("In: {0}; Out: {1}; Rec: {2}; Entries #: {3}", opt.InputFile, opt.OutputFile, opt.SetRecord, entries.Count);
+            Console.Write("Parsing database ... ");
+            DateTime start = DateTime.Now;
+            if (!LoadFile(opt.InputFile)) return 1;
+            DateTime end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            // Change everything under the base
+            bool bchanged = false;
+
+            if (!string.IsNullOrEmpty(opt.SetBase))
+            {
+                // traverse folders
+                string fullbase = Path.GetFullPath(opt.SetBase);
+                string subbase = fullbase;
+                if (!string.IsNullOrEmpty(opt.SetSubfolder))
+                {
+                    subbase = opt.SetSubfolder.Replace('/', Path.DirectorySeparatorChar);
+                    if (Directory.Exists(subbase))
+                        subbase = Path.GetFullPath(subbase);
+                    else
                     {
-                        // traverse folders
-                        string fullbase = Path.GetFullPath(opt.SetBase);
-                        string subbase = fullbase;
-                        if (!string.IsNullOrEmpty(opt.SetSubfolder))
-                        {
-                            subbase = opt.SetSubfolder.Replace('/', Path.DirectorySeparatorChar);
-                            if (Directory.Exists(subbase))
-                                subbase = Path.GetFullPath(subbase);
-                            else
-                            {
-                                subbase = Path.Combine(fullbase, subbase);
-                            }
-                        }
-                        string[] allfiles = Directory.GetFiles(subbase, "*.dbr", SearchOption.AllDirectories);
-
-                        // Build record lookup table for faster matching
-                        recsearchlist = new SortedList<string, int>();
-                        recsearchlist.Capacity = rectable.Count;
-                        for (int i = 0; i < rectable.Count; i++)
-                        {
-                            recsearchlist.Add(strtable[rectable[i].rfid], i);
-                        }
-
-                        // Update all files:
-                        bool brchanged = false;
-                        start = DateTime.Now;
-                        Console.Write("Packing {0} record files ... ", allfiles.Length);
-                        ProgressBar progress = new ProgressBar();
-                        int ci = 0;
-                        foreach (string dbrfile in allfiles)
-                        {
-                            string recordname = dbrfile.Substring(fullbase.Length).Replace(Path.DirectorySeparatorChar, '/').ToLower();
-                            if (recordname.StartsWith("/")) recordname = recordname.Substring(1);
-                            // Console.WriteLine(recordname + " f:" + dbrfile);
-                            ARZRecord brec = null;
-                            try
-                            {
-                                brec = rectable[recsearchlist[recordname]]; // TODO: Catch invalid key error here and print out error message to console
-                            }
-                            catch (KeyNotFoundException e) {
-                                Console.WriteLine("Error packing record file \"{0}\": as record {1} - no such record in database!", dbrfile, recordname);
-                                return;
-                            }
-                            List<string> fentries = new List<string>(File.ReadAllLines(dbrfile));
-                            if (ModAllEntries(brec, fentries, out brchanged))
-                            {
-                                if (brchanged)
-                                {
-                                    // DEBUG:
-                                    // Console.WriteLine("{0} {1}", recordname, brchanged ? "CHANGED " : "unchanged");
-                                    brec.PackData();
-                                }
-                            }
-                            else
-                            {
-                                Console.WriteLine("{0} Errored", recordname);
-                                return;
-                            }
-                            progress.Report(((double)ci++) / allfiles.Length);
-                            bchanged |= brchanged;
-                        }
-                        progress.Dispose();
-                        progress = null;
-                        end = DateTime.Now;
-                        Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+                        subbase = Path.Combine(fullbase, subbase);
                     }
+                }
+                string[] allfiles = Directory.GetFiles(subbase, "*.dbr", SearchOption.AllDirectories);
 
-                    bool pchanged = false;
+                // Build record lookup table for faster matching
+                recsearchlist = new SortedList<string, int>();
+                recsearchlist.Capacity = rectable.Count;
+                for (int i = 0; i < rectable.Count; i++)
+                {
+                    recsearchlist.Add(strtable[rectable[i].rfid], i);
+                }
 
-                    if (opt.SetPatches != null)
+                // Update all files:
+                bool brchanged = false;
+                start = DateTime.Now;
+                Console.Write("Packing {0} record files ... ", allfiles.Length);
+                ProgressBar progress = new ProgressBar();
+                int ci = 0;
+                foreach (string dbrfile in allfiles)
+                {
+                    string recordname = dbrfile.Substring(fullbase.Length).Replace(Path.DirectorySeparatorChar, '/').ToLower();
+                    if (recordname.StartsWith("/")) recordname = recordname.Substring(1);
+                    // Console.WriteLine(recordname + " f:" + dbrfile);
+                    ARZRecord brec = null;
+                    try
                     {
-                        foreach (string patchfile in opt.SetPatches)
+                        brec = rectable[recsearchlist[recordname]]; // TODO: Catch invalid key error here and print out error message to console
+                    }
+                    catch (KeyNotFoundException)
+                    {
+                        Console.WriteLine("Error packing record file \"{0}\": as record {1} - no such record in database!", dbrfile, recordname);
+                        return 1;
+                    }
+                    List<string> fentries = new List<string>(File.ReadAllLines(dbrfile));
+                    if (ModAllEntries(brec, fentries, out brchanged))
+                    {
+                        if (brchanged)
                         {
-                            string[] pfstrings = File.ReadAllLines(patchfile);
-                            string srec = "";
-                            int cline = 0;
-                            List<string> entrybuf = new List<string>();
-                            bool pechanged = false;
-                            while (cline < pfstrings.Length)
-                            {
-                                // Ignore comments
-                                string sline = pfstrings[cline].Trim();
-                                if (sline.StartsWith("#"))
-                                {
-                                    cline++; continue;
-                                }
-                                if (sline.StartsWith("[") && sline.EndsWith("]"))
-                                {
-                                    if (entrybuf.Count > 0 && srec != "")
-                                    { // Got record and entries, change them
-                                        ARZRecord crec = rectable.Find(r => strtable[r.rfid] == srec);
-                                        Console.WriteLine("Patching {0}", srec); // DEBUG
-                                        ModAllEntries(crec, entrybuf, out pechanged);
-                                        if (pechanged) crec.PackData();
-                                        pchanged |= pechanged;
-                                        entrybuf.Clear();
-                                    }
-                                    srec = sline.Substring(1, sline.Length - 2);
-                                    if (srec.Trim().StartsWith("/")) srec = srec.Trim().Substring(1); // TODO: May need lowering case
-                                }
-                                else
-                                {
-                                    entrybuf.Add(sline);
-                                }
-                                cline++;
-                            }
-                            // EOF, save changes:
+                            // DEBUG:
+                            // Console.WriteLine("{0} {1}", recordname, brchanged ? "CHANGED " : "unchanged");
+                            brec.PackData();
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("{0} Errored", recordname);
+                        return 1;
+                    }
+                    progress.Report(((double)ci++) / allfiles.Length);
+                    bchanged |= brchanged;
+                }
+                progress.Dispose();
+                progress = null;
+                end = DateTime.Now;
+                Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+            }
+
+            // Now patches
+            bool pchanged = false;
+
+            if (opt.SetPatches != null)
+            {
+                foreach (string patchfile in opt.SetPatches)
+                {
+                    string[] pfstrings = File.ReadAllLines(patchfile);
+                    string srec = "";
+                    int cline = 0;
+                    List<string> entrybuf = new List<string>();
+                    bool pechanged = false;
+                    while (cline < pfstrings.Length)
+                    {
+                        // Ignore comments
+                        string sline = pfstrings[cline].Trim();
+                        if (sline.StartsWith("#"))
+                        {
+                            cline++; continue;
+                        }
+                        if (sline.StartsWith("[") && sline.EndsWith("]"))
+                        {
                             if (entrybuf.Count > 0 && srec != "")
                             { // Got record and entries, change them
                                 ARZRecord crec = rectable.Find(r => strtable[r.rfid] == srec);
@@ -163,416 +172,427 @@ namespace arzedit
                                 ModAllEntries(crec, entrybuf, out pechanged);
                                 if (pechanged) crec.PackData();
                                 pchanged |= pechanged;
+                                entrybuf.Clear();
                             }
-
-                        }
-                    }
-
-                    // Get a record to act upon if one is set
-                    ARZRecord rec = null;
-
-                    if (!string.IsNullOrEmpty(opt.SetRecord))
-                    {
-                        opt.SetRecord = opt.SetRecord.Trim();
-                        if (opt.SetRecord.StartsWith("/")) opt.SetRecord = opt.SetRecord.Substring(1);
-                        rec = rectable.Find(r => strtable[r.rfid] == opt.SetRecord);
-                        if (rec == null)
-                        {
-                            Console.WriteLine("Record \"{0}\" does not exist in database, check case, spaces, and separators", opt.SetRecord);
-                            return;
-                        }
-                    }
-
-                    bool fchanged = false;
-
-                    // Now file:
-                    if (!string.IsNullOrEmpty(opt.SetFile) && rec != null)
-                    {
-                        List<string> fentries = new List<string>(File.ReadAllLines(opt.SetFile));
-                        ModAllEntries(rec, fentries, out fchanged);
-                    }
-
-                    // Now list of entries:
-                    bool echanged = false;
-
-                    if (opt.SetEntries != null && rec != null)
-                    {
-                        List<string> eentries = new List<string>(opt.SetEntries);
-                        ModAllEntries(rec, eentries, out echanged);
-                    }
-
-
-                    if (pchanged || bchanged || fchanged || echanged)
-                    {
-                        if (fchanged || echanged && rec != null) rec.PackData();
-                        if (opt.ForceOverwrite || !File.Exists(opt.OutputFile) || char.ToUpper(Ask(string.Format("Output file \"{0}\" exists, overwrite? [y/n] n: ", Path.GetFullPath(opt.OutputFile)), "yYnN", 'N')) == 'Y')
-                        {
-                            start = DateTime.Now;
-                            Console.Write("Saving database ... ");
-                            CompactStringlist();
-                            SaveData(opt.OutputFile);
-                            end = DateTime.Now;
-                            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+                            srec = sline.Substring(1, sline.Length - 2);
+                            if (srec.Trim().StartsWith("/")) srec = srec.Trim().Substring(1); // TODO: May need lowering case
                         }
                         else
                         {
-                            Console.WriteLine("Aborted by user.");
+                            entrybuf.Add(sline);
                         }
-
-                        // Console.WriteLine("Success, press any key to exit ...");                    
+                        cline++;
                     }
-                    else
-                    {
-                        // SaveData(OutputFile); // DEBUG: REMOVE
-                        Console.WriteLine("No changes, files untouched");
+                    // EOF, save changes:
+                    if (entrybuf.Count > 0 && srec != "")
+                    { // Got record and entries, change them
+                        ARZRecord crec = rectable.Find(r => strtable[r.rfid] == srec);
+                        Console.WriteLine("Patching {0}", srec); // DEBUG
+                        ModAllEntries(crec, entrybuf, out pechanged);
+                        if (pechanged) crec.PackData();
+                        pchanged |= pechanged;
                     }
-                    // Console.ReadKey(false);
 
-                    /*
-                   // List<string> userecords = new List<string>(new string[] { opt.SetRecord });
-
-                    recsearchlist = FindRecords(userecords);
-
-                    foreach (string recname in userecords)
-                    {
-                        ARZRecord rec = rectable[recsearchlist[recname]];
-                        foreach (string emod in modentries)
-                        {
-                            string ename = emod.Split(',')[0];
-                            ARZEntry entry = rec.entries.Find(e => strtable[e.dstrid] == ename);
-                            Console.WriteLine("Found:");
-                            Console.WriteLine(entry);
-                            // Modify a record:
-                            if (!entry.TryAssign(emod)) return; // Try assigning data
-                            if (entry.changed)
-                            {
-                                rec.PackData();
-                                changed = true;
-                            }
-                        }
-                    }*/
                 }
-                else if (iVerb == "extract")
+            }
+
+            // Get a record to act upon if one is set
+            ARZRecord rec = null;
+
+            if (!string.IsNullOrEmpty(opt.SetRecord))
+            {
+                opt.SetRecord = opt.SetRecord.Trim();
+                if (opt.SetRecord.StartsWith("/")) opt.SetRecord = opt.SetRecord.Substring(1);
+                rec = rectable.Find(r => strtable[r.rfid] == opt.SetRecord);
+                if (rec == null)
                 {
-                    ExtractOptions opt = iOpt as ExtractOptions;
-                    // Console.WriteLine("In: {0}; Out: {1}; Rec: {2}; Entries #: {3}", opt.InputFile, opt.OutputFile, opt.SetRecord, entries.Count);
-                    Console.Write("Parsing database ... ");
-                    DateTime start = DateTime.Now;
-                    if (!LoadFile(opt.InputFile)) return;
-                    DateTime end = DateTime.Now;
-                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
-
-                    string outpath = null;
-                    if (string.IsNullOrEmpty(opt.OutputPath))
-                        outpath = Directory.GetCurrentDirectory();
-                    else
-                        outpath = Path.GetFullPath(opt.OutputPath);
-
-                    Console.WriteLine("Extracting to \"{0}\" ...", outpath);
-
-                    char ans = 'n';
-                    bool overwriteall = opt.ForceOverwrite;
-                    start = DateTime.Now;
-                    using (ProgressBar progress = new ProgressBar())
-                    {
-                        int ci = 0;
-                        foreach (ARZRecord rec in rectable)
-                        {
-                            string filename = Path.Combine(outpath, strtable[rec.rfid].Replace('/', Path.DirectorySeparatorChar));
-                            // Console.WriteLine("Writing \"{0}\"", filename); // Debug
-                            Directory.CreateDirectory(Path.GetDirectoryName(filename));
-                            bool fileexists = File.Exists(filename);
-                            if (!overwriteall && fileexists)
-                            {
-                                progress.SetHidden(true);
-                                ans = char.ToLower(Ask(string.Format("File \"{0}\" exists, overwrite? yes/no/all/cancel (n): ", filename), "yYnNaAcC", 'n'));
-                                if (ans == 'c') {
-                                    Console.WriteLine("Aborted by user");
-                                    return;
-                                };
-                                progress.SetHidden(false);
-                                overwriteall = ans == 'a';
-                            }
-
-                            if (!fileexists || overwriteall || ans == 'y')
-                            {
-                                using (FileStream fs = new FileStream(filename, FileMode.Create))
-                                using (StreamWriter sr = new StreamWriter(fs))
-                                {
-                                    sr.NewLine = "\n";
-                                    foreach (ARZEntry etr in rec.entries)
-                                        sr.WriteLine(etr);
-                                }
-                                // Set Date:
-                                File.SetCreationTime(filename, rec.rdFileTime); // TODO: Check if this is needed
-                            }
-                            progress.Report(((double)ci++) / rectable.Count);
-                        }
-                    }
-                    end = DateTime.Now;
-                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+                    Console.WriteLine("Record \"{0}\" does not exist in database, check case, spaces, and separators", opt.SetRecord);
+                    return 1;
                 }
-                else if (iVerb == "pack")
+            }
+
+            bool fchanged = false;
+
+            // Now file:
+            if (!string.IsNullOrEmpty(opt.SetFile) && rec != null)
+            {
+                List<string> fentries = new List<string>(File.ReadAllLines(opt.SetFile));
+                ModAllEntries(rec, fentries, out fchanged);
+            }
+
+            // Now list of entries:
+            bool echanged = false;
+
+            if (opt.SetEntries != null && rec != null)
+            {
+                List<string> eentries = new List<string>(opt.SetEntries);
+                ModAllEntries(rec, eentries, out echanged);
+            }
+
+            // Save changes
+            if (pchanged || bchanged || fchanged || echanged)
+            {
+                if (fchanged || echanged && rec != null) rec.PackData();
+                if (!AskSaveData(opt.OutputFile, opt.ForceOverwrite)) return 1;
+            }
+            else
+            {
+                // SaveData(OutputFile); // DEBUG: REMOVE
+                Console.WriteLine("No changes, files untouched");
+            }
+            return 0;
+        } // ProcessSetVerb
+
+        static int ProcessExtractVerb(ExtractOptions opt)
+        {
+            Console.Write("Parsing database ... ");
+            DateTime start = DateTime.Now;
+            if (!LoadFile(opt.InputFile)) return 1;
+            DateTime end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            string outpath = null;
+            if (string.IsNullOrEmpty(opt.OutputPath))
+                outpath = Directory.GetCurrentDirectory();
+            else
+                outpath = Path.GetFullPath(opt.OutputPath);
+
+            Console.WriteLine("Extracting to \"{0}\" ...", outpath);
+
+            char ans = 'n';
+            bool overwriteall = opt.ForceOverwrite;
+            start = DateTime.Now;
+            using (ProgressBar progress = new ProgressBar())
+            {
+                int ci = 0;
+                foreach (ARZRecord rec in rectable)
                 {
-                    PackOptions opt = iOpt as PackOptions;
-                    string packfolder = Path.GetFullPath(opt.InputPath);
-                    if (string.IsNullOrEmpty(opt.OutputFile)) {
-                        Console.WriteLine("Please specify output file as second parameter!");
-                        PrintUsage();
-                        return;
-                    }
-
-                    string[] tfolders = null;
-                    if (opt.TemplatePaths != null)
+                    string filename = Path.Combine(outpath, strtable[rec.rfid].Replace('/', Path.DirectorySeparatorChar));
+                    // Console.WriteLine("Writing \"{0}\"", filename); // Debug
+                    Directory.CreateDirectory(Path.GetDirectoryName(filename));
+                    bool fileexists = File.Exists(filename);
+                    if (!overwriteall && fileexists)
                     {
-                        tfolders = opt.TemplatePaths;
-                    } else
-                    {
-                        tfolders = new string[1] { opt.InputPath };
-                    }
-
-                    Dictionary<string, TemplateNode> templates = new Dictionary<string, TemplateNode>();
-                    Console.Write("Parsing templates ... ");
-                    DateTime start = DateTime.Now;
-                    foreach (string tfolder in tfolders)
-                    {
-                        string tfullpath = Path.GetFullPath(tfolder);
-                        string[] alltemplates = Directory.GetFiles(tfullpath, "*.tpl", SearchOption.AllDirectories);
-                        foreach (string tfile in alltemplates)
+                        progress.SetHidden(true);
+                        ans = char.ToLower(Ask(string.Format("File \"{0}\" exists, overwrite? yes/no/all/cancel (n): ", filename), "yYnNaAcC", 'n'));
+                        if (ans == 'c')
                         {
-                            string[] tstrings = File.ReadAllLines(tfile);
-                            string tpath = tfile.Substring(tfullpath.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
-                            if (tpath.StartsWith("/")) tpath = tpath.Substring(1);
-                            // TODO: sort out database prefix
-                            if (!tpath.StartsWith("database/")) tpath = "database/" + tpath;
-                            TemplateNode ntemplate = new TemplateNode(null, tpath);
-                            ntemplate.ParseNode(tstrings, 0);
-                            if (templates.ContainsKey(tpath))
-                                Console.WriteLine("Template {0} already in a list, overwriting", tpath); // DEBUG
-                            templates[tpath] = ntemplate;
-                        }
+                            Console.WriteLine("Aborted by user");
+                            return 1;
+                        };
+                        progress.SetHidden(false);
+                        overwriteall = ans == 'a';
                     }
 
-                    foreach (KeyValuePair<string, TemplateNode> tpln in templates)
+                    if (!fileexists || overwriteall || ans == 'y')
                     {
-                        // Console.WriteLine("{0} - {1} name {2}", tpln.Key, tpln.Value.kind, tpln.Value.values["name"]);
-                        tpln.Value.FillIncludes(templates);
-                    }
-
-                    DateTime end = DateTime.Now;
-                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
-
-                    // Got templates
-                    // create empty strtable
-                    bool peek = false;
-                    List<string> peekstrtable = null;
-                    List<ARZRecord> peekrectable = null;
-                    if (!string.IsNullOrEmpty(opt.PeekFile)) {
-                        LoadFile(opt.PeekFile);
-                        peekstrtable = strtable;
-                        peekrectable = rectable;
-                        peek = true;
-                    }
-
-                    strtable = new List<string>();
-                    rectable = new List<ARZRecord>();
-                    if (opt.CheckReferences)
-                    {
-                        string[] resfolders = new string[1] { Path.Combine(packfolder, "resources") };
-                        foreach (string resfolder in resfolders)
+                        try
                         {
-                            if (Directory.Exists(resfolder))
+                            using (FileStream fs = new FileStream(filename, FileMode.Create))
+                            using (StreamWriter sr = new StreamWriter(fs))
                             {
-                                if (resfiles == null)
-                                    resfiles = new HashSet<string>();
-                                string[] allresfiles = Directory.GetFiles(resfolder, "*.*", SearchOption.AllDirectories);
-                                foreach (string aresfile in allresfiles)
-                                {
-                                    string relresfile = aresfile.Substring(resfolder.Length).Replace(Path.DirectorySeparatorChar, '/');
-                                    if (relresfile.StartsWith("/")) relresfile = relresfile.Substring(1);
-                                    // Console.WriteLine("Adding reasource file \"{0}\"", relresfile); // DEBUG
-                                    resfiles.Add(relresfile);
-                                };
+                                sr.NewLine = "\n";
+                                foreach (ARZEntry etr in rec.entries)
+                                    sr.WriteLine(etr);
                             }
-                        }
-
-                        if (resfiles != null && resfiles.Count == 0) // No files to reference to - disable option
+                            // Set Date:
+                            File.SetCreationTime(filename, rec.rdFileTime); // TODO: Check if this is needed
+                        } catch (Exception e)
                         {
-                            // Console.WriteLine("Check references option was passed, but there are no resource files to be referenced against. Disabling.");
-                            resfiles = null;
-                            // opt.CheckReferences = false;
+                            Console.WriteLine("Error writing file \"{0}\", Message: ", filename, e.Message);
+                            return 1;
                         }
                     }
-
-
-
-                    // Parse record
-                    Console.Write("Packing ... ");
-                    start = DateTime.Now;
-                    string[] alldbrs = Directory.GetFiles(packfolder, "*.dbr", SearchOption.AllDirectories);
-                    if (opt.CheckReferences) {
-                        dbrfiles = new HashSet<string>();
-                        foreach (string dbrfile in alldbrs)
-                        { // TODO: Duplicated code here Copy/Pasted
-                            string recname = dbrfile.Substring(packfolder.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
-                            if (recname.StartsWith("/")) recname = recname.Substring(1);
-                            if (recname.StartsWith("database/")) recname = recname.Substring("database/".Length);
-                            if (!recname.StartsWith("records/")) continue; // TODO: Fix Me, need proper subfolder path passed as parameter
-                            dbrfiles.Add(recname);
-                        }
-                    }
-                    using (ProgressBar progress = new ProgressBar())
-                    {
-                        int cf = 0;
-                        foreach (string dbrfile in alldbrs)
-                        {
-                            string[] recstrings = File.ReadAllLines(dbrfile);
-                            string recname = dbrfile.Substring(packfolder.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
-                            if (recname.StartsWith("/")) recname = recname.Substring(1);
-                            if (recname.StartsWith("database/")) recname = recname.Substring("database/".Length);
-                            if (!recname.StartsWith("records/")) continue; // TODO: Fix Me, need proper subfolder path passed as parameter
-                                                                           // Console.WriteLine("packing {0} to {1}", dbrfile, recname);
-                                                                           //*
-                            ARZRecord nrec = new ARZRecord(recname, recstrings, templates);
-                            rectable.Add(nrec);
-
-                            if (peek) // Peek and see if we have same data
-                            {
-                                ARZRecord peekrec = peekrectable.Find(pr => peekstrtable[pr.rfid] == strtable[nrec.rfid]);
-                                // Console.WriteLine("Comparing {0}", strtable[nrec.rfid]);
-                                if (peekrec.rtype != nrec.rtype) Console.WriteLine("Type differs \"{0}\" != \"{1}\"", nrec.rtype, peekrec.rtype);
-                                if (peekrec.entries.Count != nrec.entries.Count) Console.WriteLine("Entry count differs peek {0} != new {1}", peekrec.entries.Count, nrec.entries.Count);
-                                else
-                                {
-                                    for (int i = 0; i < nrec.entries.Count; i++)
-                                    {
-                                        ARZEntry ne = nrec.entries[i];
-                                        ARZEntry pe = peekrec.entries[i];
-                                        if (peekstrtable[pe.dstrid] != strtable[ne.dstrid]) Console.WriteLine("Entry {0} name differs peek \"{1}\" != new \"{2}\"", i, peekstrtable[pe.dstrid], strtable[ne.dstrid]);
-                                        if (pe.dtype != ne.dtype) Console.WriteLine("Entry {0} type differs peek {1} != new {2}", i, pe.dtype, ne.dtype);
-                                        else
-                                        if (pe.dcount != ne.dcount) Console.WriteLine("Entry {0} array size differs peek {1} != new {2}", i, pe.dcount, ne.dcount);
-                                        else
-                                        {
-                                            for (int k = 0; k < pe.dcount; k++)
-                                            {
-                                                if (pe.dtype == 0 || pe.dtype == 1 || pe.dtype == 3)
-                                                {
-                                                    if (pe.values[k] != ne.values[k]) Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", strtable[ne.dstrid], k, pe.values[k], ne.values[k], strtable[nrec.rfid]);
-                                                }
-                                                else
-                                                    if (peekstrtable[pe.values[k]] != strtable[ne.values[k]])
-                                                    Console.WriteLine("Entry {0} value {1} strings differ peek \"{2}\" != new \"{3}\"", i, k, peekstrtable[pe.values[k]] != strtable[ne.values[k]]);
-                                            }
-                                        }
-                                    }
-                                }
-                            } // If peek
-                            // Show Progress
-                            progress.Report((double)cf++ / alldbrs.Length);
-                            //*/
-                        } // foreach dbrfile in ...
-                    } // using progress;
-                    end = DateTime.Now;
-                    Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
-
-                    if (opt.ForceOverwrite || !File.Exists(opt.OutputFile) || char.ToUpper(Ask(string.Format("Output file \"{0}\" exists, overwrite? [y/n] n: ", Path.GetFullPath(opt.OutputFile)), "yYnN", 'N')) == 'Y')
-                    {
-                        start = DateTime.Now;
-                        Console.Write("Saving database ... ");
-                        CompactStringlist();
-                        SaveData(opt.OutputFile);
-                        end = DateTime.Now;
-                        Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
-                    }
-                    else
-                    {
-                        Console.WriteLine("Aborted by user.");
-                    }
-                    
-                    return;
+                    progress.Report(((double)ci++) / rectable.Count);
                 }
-                else if (iVerb == "get")
-                {
-                    GetOptions opt = iOpt as GetOptions;
-                    Console.WriteLine("Getting records is not implemented yet!");
-                    return;
-                }
+            }
+            end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
 
-                    /*
-                    recsearchlist = FindRecords(userecords);
+            return 0;
+        } // ProcessExtractVerb
 
-
-                    bool changed = false;
-                    foreach (string recname in userecords)
-                    {
-                        ARZRecord rec = rectable[recsearchlist[recname]];
-                        foreach (string emod in modentries)
-                        {
-                            string ename = emod.Split(',')[0];
-                            ARZEntry entry = rec.entries.Find(e => strtable[e.dstrid] == ename);
-                            Console.WriteLine("Found:");
-                            Console.WriteLine(entry);
-                            // Modify a record:
-                            if (!entry.TryAssign(emod)) return; // Try assigning data
-                            if (entry.changed)
-                            {
-                                rec.PackData();
-                                changed = true;
-                            }
-                        }
-                    }
-                    */
-                    // }
-                    return;
-            } else {
+        static int ProcessPackVerb(PackOptions opt)
+        {
+            string packfolder = Path.GetFullPath(opt.InputPath);
+            if (string.IsNullOrEmpty(opt.OutputFile))
+            {
+                Console.WriteLine("Please specify output file as second parameter!");
                 PrintUsage();
-                return;
+                return 1;
             }
-            // Read file
-            /*            
-                                    if (args.Length < 3) { PrintUsage(); return; }
-                                    int carg = 0;
-                                    ArzFile = args[carg++];
-                                    if (args[carg++].ToLower() == "-o")
-                                        OutputFile = args[carg++];
-                                    else
-                                        OutputFile = ArzFile;
 
-                                    List<string> userecords = new List<string>();
-                                    userecords.Add(args[carg++]);
+            // Process templates
+            string[] tfolders = null;
+            if (opt.TemplatePaths != null)
+            {
+                tfolders = opt.TemplatePaths;
+            }
+            else
+            {
+                tfolders = new string[1] { opt.InputPath };
+            }
 
-                                    List<string> modentries = new List<string>();
-                                    for (; carg < args.Length; carg++) {
-                                        modentries.Add(args[carg]);
-                                    }
-            */
-            //*/
-            // Find a record:
-            // ARZRecord first = rectable[recsearchlist[strsearchlist["records/watertype/noisetextures/smoothwaves.dbr"]]];
-            //            List<string> userecords = new List<string>(new string[] { "records/game/gameengine.dbr" });
-            //            recsearchlist = FindRecords(userecords);
+            Console.Write("Parsing templates ... ");
+            DateTime start = DateTime.Now;
 
-            // ARZRecord first = rectable[recsearchlist["records/game/gameengine.dbr"]];
-            // int itemstrid = strsearchlist["playerDevotionCap"];
-            // ARZEntry item = first.entries.Find(e => strtable[e.dstrid] == "playerDevotionCap");
-            // WriteEntry(item);
-            /*            Console.WriteLine("File: {0}", strtable[first.rfid]);
-                        foreach (ARZEntry etr in first.entries)
+            Dictionary<string, TemplateNode> templates = null;
+            try
+            {
+                templates = BuildTemplateDict(tfolders);
+            } catch (Exception e)
+            {
+                Console.WriteLine("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
+                return 1;
+            }
+
+            DateTime end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            // Got templates
+
+            // create empty strtable
+
+            // Check for peeking
+            bool peek = false;
+            List<string> peekstrtable = null;
+            List<ARZRecord> peekrectable = null;
+            if (!string.IsNullOrEmpty(opt.PeekFile))
+            {
+                LoadFile(opt.PeekFile);
+                peekstrtable = strtable;
+                peekrectable = rectable;
+                peek = true;
+            }
+
+            strtable = new List<string>();
+            rectable = new List<ARZRecord>();
+            if (opt.CheckReferences)
+            {
+                resfiles = BuildResourceSet(Path.Combine(packfolder, "resources"));
+            }
+
+            // Pack records
+            Console.Write("Packing ... ");
+            start = DateTime.Now;
+            string[] alldbrs = null;
+            try
+            {
+                alldbrs = Directory.GetFiles(packfolder, "*.dbr", SearchOption.AllDirectories);
+            }
+            catch (Exception e) {
+                Console.WriteLine("Error listing *.dbr files, reason - {0} ", e.Message);
+                return 1;
+            }
+
+            if (opt.CheckReferences)
+            {
+                dbrfiles = new HashSet<string>();
+                foreach (string dbrfile in alldbrs)
+                {
+                    dbrfiles.Add(DbrFileToRecName(dbrfile, packfolder));
+                }
+            }
+            try
+            {
+                using (ProgressBar progress = new ProgressBar())
+                {
+                    for (int cf = 0; cf < alldbrs.Length; cf++)
+                    {
+                        string dbrfile = alldbrs[cf];
+                        string[] recstrings = File.ReadAllLines(dbrfile);
+                        ARZRecord nrec = new ARZRecord(DbrFileToRecName(dbrfile, packfolder), recstrings, templates);
+                        rectable.Add(nrec);
+
+                        if (peek) // Peek and see if we have same data
                         {
-                            Console.WriteLine(etr);
-                        }
-            */
-/*            if (changed)
-            {
-                SaveData(OutputFile);
-                Console.WriteLine("Success, press any key to exit ...");
-            } else
-            {
-                Console.WriteLine("No changes, files untouched, press any key to exit ...");
+                            ARZRecord peekrec = peekrectable.Find(pr => peekstrtable[pr.rfid] == strtable[nrec.rfid]);
+                            CompareRecords(nrec, peekrec, strtable, peekstrtable);
+                        } // If peek
+
+                        // Show Progress
+                        progress.Report((double)cf / alldbrs.Length);
+                    } // for int cf = 0 ...
+                } // using progress
             }
-            Console.ReadKey(true);*/
+            catch (Exception e)
+            {
+                Console.WriteLine("Error while parsing records. Message: {0}\nStack Trace:\n{1}", e.Message, e.StackTrace);
+                return 1;
+            }
+
+            end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            // Save Data
+            if (!AskSaveData(opt.OutputFile, opt.ForceOverwrite)) return 1;
+
+            return 0;
+        } // ProcessPackVerb
+
+        static string DbrFileToRecName(string dbrfile, string packfolder)
+        {
+            string recname = dbrfile.Substring(packfolder.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/').TrimStart('/');
+            // if (recname.StartsWith("/")) recname = recname.Substring(1);
+            if (recname.StartsWith("database/")) recname = recname.Substring("database/".Length);
+            /* DEBUG
+            if (!recname.StartsWith("records/")) {
+                // Console.WriteLine("Record {0} not under records/ path.", recname);
+                // continue; // TODO: Fix Me, need proper subfolder path passed as parameter
+            }
+            */
+            return recname;
         }
+
+        static bool CompareRecords(ARZRecord nrec, ARZRecord peekrec, List<string> newstrtable, List<string> peekstrtable) {
+            bool differs = false;
+            // Console.WriteLine("Comparing {0}", newstrtable[nrec.rfid]);
+            if (peekrec.rtype != nrec.rtype) { Console.WriteLine("Type differs \"{0}\" != \"{1}\"", nrec.rtype, peekrec.rtype); differs = true; }
+            if (peekrec.entries.Count != nrec.entries.Count) { Console.WriteLine("Entry count differs peek {0} != new {1}", peekrec.entries.Count, nrec.entries.Count); differs = true; }
+            else
+            {
+                for (int i = 0; i < nrec.entries.Count; i++)
+                {
+                    ARZEntry ne = nrec.entries[i];
+                    ARZEntry pe = peekrec.entries[i];
+                    if (peekstrtable[pe.dstrid] != newstrtable[ne.dstrid])
+                    { Console.WriteLine("Entry {0} name differs peek \"{1}\" != new \"{2}\"", i, peekstrtable[pe.dstrid], newstrtable[ne.dstrid]); differs = true; }
+                    if (pe.dtype != ne.dtype) { Console.WriteLine("Entry {0} type differs peek {1} != new {2}", i, pe.dtype, ne.dtype); differs = true; }
+                    else
+                    if (pe.dcount != ne.dcount) { Console.WriteLine("Entry {0} array size differs peek {1} != new {2}", i, pe.dcount, ne.dcount); differs = true; }
+                    else
+                    {
+                        for (int k = 0; k < pe.dcount; k++)
+                        {
+                            if (pe.dtype == 0 || pe.dtype == 3)
+                            {
+                                if (pe.values[k] != ne.values[k]) {
+                                    Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", newstrtable[ne.dstrid], k, pe.values[k], ne.values[k], newstrtable[nrec.rfid]);
+                                    differs = true;
+                                }
+                            }
+                            else if (pe.dtype == 1)
+                            {
+                                if (pe.AsFloat(k) != ne.AsFloat(k)) {
+                                    Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", newstrtable[ne.dstrid], k, pe.AsFloat(k), pe.AsFloat(k), newstrtable[nrec.rfid]);
+                                    differs = true;
+                                }
+                            }
+                            else
+                            {
+                                if (peekstrtable[pe.values[k]] != newstrtable[ne.values[k]])
+                                {
+                                    Console.WriteLine("Record {4} Entry {0} value {1} strings differ peek \"{2}\" != new \"{3}\"", newstrtable[ne.dstrid], k, peekstrtable[pe.values[k]], newstrtable[ne.values[k]], newstrtable[nrec.rfid]);
+                                    differs = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return differs;
+        }
+
+        static bool AskSaveData(string outputfile, bool force = false)
+        {
+            if (force || !File.Exists(outputfile) || char.ToUpper(Ask(string.Format("Output file \"{0}\" exists, overwrite? [y/n] n: ", Path.GetFullPath(outputfile)), "yYnN", 'N')) == 'Y')
+            {
+                DateTime start = DateTime.Now;
+                Console.Write("Saving database ... ");
+                CompactStringlist();
+                SaveData(outputfile);
+                DateTime end = DateTime.Now;
+                Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+                return true;
+            }
+            else
+            {
+                Console.WriteLine("Aborted by user.");
+                return false;
+            }
+        }
+
+        static HashSet<string> BuildResourceSet(string respath)
+        {
+            string[] resfolders = new string[1] { respath };
+            foreach (string resfolder in resfolders)
+            {
+                if (Directory.Exists(resfolder))
+                {
+                    if (resfiles == null)
+                        resfiles = new HashSet<string>();
+                    string[] allresfiles = Directory.GetFiles(resfolder, "*.*", SearchOption.AllDirectories);
+                    foreach (string aresfile in allresfiles)
+                    {
+                        string relresfile = aresfile.Substring(resfolder.Length).Replace(Path.DirectorySeparatorChar, '/').TrimStart('/');
+                        // if (relresfile.StartsWith("/")) relresfile = relresfile.Substring(1);
+                        // Console.WriteLine("Adding reasource file \"{0}\"", relresfile); // DEBUG
+                        resfiles.Add(relresfile);
+                    }
+                }
+            }
+
+            if (resfiles != null && resfiles.Count == 0) // No files to reference to - disable option
+            {
+                // Console.WriteLine("Check references option was passed, but there are no resource files to be referenced against. Disabling.");
+                resfiles = null;
+                // opt.CheckReferences = false;
+            }
+
+            return resfiles;
+        } // BuildResourceSet()
+
+        static Dictionary<string, TemplateNode> BuildTemplateDict(string[] tfolders)
+        {
+            Dictionary<string, TemplateNode> templates = new Dictionary<string, TemplateNode>();
+            foreach (string tfolder in tfolders)
+            {
+                string tfullpath = Path.GetFullPath(tfolder).TrimEnd(Path.DirectorySeparatorChar);
+                // string tfullpath = Path.GetFullPath(tfolder);
+                string tbasepath = tfullpath;
+                // If we are not starting at the base, go up.
+                // TODO: what about mods not using /database for templates?
+                string dirname = Path.GetFileName(tbasepath);
+                if (Path.GetFileName(tbasepath) == "templates")
+                    tbasepath = Path.GetFullPath(Path.Combine(tbasepath, ".."));
+                if (Path.GetFileName(tbasepath) == "database")
+                    tbasepath = Path.GetFullPath(Path.Combine(tbasepath, ".."));
+
+                // string debugpath = Path.Combine(tbasepath, "templates");
+                if (!Directory.Exists(Path.Combine(tbasepath, "database")) && !Directory.Exists(Path.Combine(tbasepath, "templates")))
+                {
+                    Console.WriteLine("Possibly wrong template base folder \"{0}\", does not contain database or templates folder!", tbasepath);
+                }
+
+                string[] alltemplates = Directory.GetFiles(tfullpath, "*.tpl", SearchOption.AllDirectories);
+                foreach (string tfile in alltemplates)
+                {
+                    string[] tstrings = File.ReadAllLines(tfile);
+                    string tpath = tfile.Substring(tbasepath.Length).ToLower().Replace(Path.DirectorySeparatorChar, '/');
+                    if (tpath.StartsWith("/")) tpath = tpath.Substring(1);
+                    // TODO: sort out database prefix                            
+
+                    if (!tpath.StartsWith("database/"))
+                    {
+                        tpath = "database/" + tpath;
+                    }
+
+                    TemplateNode ntemplate = new TemplateNode(null, tpath);
+                    ntemplate.ParseNode(tstrings, 0);
+                    if (templates.ContainsKey(tpath))
+                        Console.WriteLine("Template \"{0}\" already parsed, overriding with {1}", tpath, tfile); // DEBUG
+                    templates[tpath] = ntemplate;
+                }
+            }
+
+            foreach (KeyValuePair<string, TemplateNode> tpln in templates)
+            {
+                // Console.WriteLine("{0} - {1} name {2}", tpln.Key, tpln.Value.kind, tpln.Value.values["name"]);
+                tpln.Value.FillIncludes(templates);
+            }
+            return templates;
+        } // BuildTemplateDict
 
         static char Ask(string question, string answers, char adefault) {
             Console.Write(question);
@@ -978,7 +998,7 @@ namespace arzedit
             public string InputPath { get; set; }
             [ValueOption(1)]
             public string OutputFile { get; set; }
-            [OptionArray('t', "tbase", HelpText = "Folder(s) containing templates, use when templates are not in input path")]
+            [OptionArray('t', "tbase", HelpText = "Folder(s) containing templates, if not specified - assumes templates are in mod folder. Order matters - later templates override prior. You would like game templates go first and your own templates second.")]
             public string[] TemplatePaths { get; set; }
             [Option('p', "peek", HelpText = "Peek at database and compare results - debugging option")]
             public string PeekFile { get; set; }
@@ -1222,11 +1242,11 @@ namespace arzedit
                 
                 if (vart == null)
                 {
-                    Console.WriteLine("Variable {0} not found in any included templates", varname);
+                    Console.WriteLine("Record \"{1}\" Variable \"{0}\" not found in any included templates.", varname, rname);
                 }
                 else {
                     ARZEntry newentry = new ARZEntry(estr, vart, rname);
-                    entries.Add(newentry);                    
+                    entries.Add(newentry);
                 }
             }
             this.PackData();
@@ -1444,7 +1464,7 @@ namespace arzedit
 
         public bool TryAssign(string fromstr) {
             string[] estrs = fromstr.Split(',');
-            if (estrs.Length != 3)
+            if (estrs.Length > 3 || estrs.Length == 1)
             {
                 Console.WriteLine("Malformed assignment string \"{0}\"", fromstr);
                 return false;
