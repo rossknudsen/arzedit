@@ -13,10 +13,11 @@ namespace arzedit
     {
         // static string ArzFile = "database.arz";
         // static string OutputFile = "database2.arz";
-        const string VERSION = "0.1b3";
+        const string VERSION = "0.1b4";
         static byte[] mdata = null;
         static byte[] footer = new byte[16];
-        public static List<string> strtable = null;
+        //TODO: Move those static fields to an instance object, arz file should be instance of an object, not stored in static fields in main program
+        public static List<string> strtable = null; 
         public static List<int> strrefcount = null;
         public static SortedDictionary<string, int> strsearchlist = null;
         public static HashSet<string> resfiles = null;
@@ -49,6 +50,14 @@ namespace arzedit
                     GetOptions opt = iOpt as GetOptions;
                     Console.WriteLine("Getting records is not implemented yet!");
                     return 1;
+                }
+                else if (iVerb == "unarc")
+                {
+                    return ProcessUnarcVerb(iOpt as UnarcOptions);
+                }
+                else if (iVerb == "arc")
+                {
+                    return ProcessArcVerb(iOpt as ArcOptions);
                 }
                 return 1; // Should not ever be here, but just in case unknown verb pops up
             } else {
@@ -293,7 +302,15 @@ namespace arzedit
                             {
                                 sr.NewLine = "\n";
                                 foreach (ARZEntry etr in rec.entries)
-                                    sr.WriteLine(etr);
+                                {
+                                    string estring = etr.ToString();
+                                    if (estring.Contains('\n') || estring.Contains(Environment.NewLine))
+                                    {
+                                        Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rec.rfid], strtable[etr.dstrid]);
+                                        estring = System.Text.RegularExpressions.Regex.Replace(estring, @"\r\n?|\n", "");
+                                    }
+                                    sr.WriteLine(estring);
+                                }
                             }
                             // Set Date:
                             File.SetCreationTime(filename, rec.rdFileTime); // TODO: Check if this is needed
@@ -429,6 +446,60 @@ namespace arzedit
 
             return 0;
         } // ProcessPackVerb
+
+        static int ProcessUnarcVerb(UnarcOptions opt)
+        {
+            string outpath = ".";
+            if (!string.IsNullOrEmpty(opt.OutPath)) outpath = opt.OutPath;
+            outpath = Path.GetFullPath(outpath);
+
+            if (opt.ArcFiles.Count == 0)
+            {
+                Console.WriteLine("Please supply at least one arc file for extraction!");
+                return 1;
+            }
+            
+            foreach (string arcfilename in opt.ArcFiles)
+            {
+                // Console.WriteLine(arcfilename);
+                string arcsub = "";
+                if (opt.ArcFiles.Count > 1 || string.IsNullOrEmpty(opt.OutPath))
+                    arcsub = Path.Combine(outpath, Path.GetFileNameWithoutExtension(arcfilename));
+                else
+                    arcsub = outpath;
+                ARCFile archive = new ARCFile();
+                using (FileStream arcstream = new FileStream(arcfilename, FileMode.Open))
+                {
+                    archive.ReadStream(arcstream);
+                    archive.UnpackAll(arcsub);
+                    // Debug repacking:
+                    archive.RepackToFile(Path.Combine(Path.GetDirectoryName(arcfilename), Path.GetFileNameWithoutExtension(arcfilename) + "r" + Path.GetExtension(arcfilename)));
+                }
+
+            }
+            return 0;
+        }
+
+        static int ProcessArcVerb(ArcOptions opt)
+        {
+            if (!string.IsNullOrEmpty(opt.Folder))
+            {
+                string afolder = Path.GetFullPath(opt.Folder);
+                if (!Directory.Exists(afolder)) {
+                    Console.WriteLine("Cannot find folder \"{0}\"", afolder);
+                    return 1;
+                }
+                if (string.IsNullOrEmpty(opt.FileMask))
+                    opt.FileMask = "*";
+
+                string outfile = Path.GetFullPath(Path.GetFileName(afolder)+".arc");
+                if (!string.IsNullOrEmpty(opt.OutFile))
+                    outfile = Path.GetFullPath(opt.OutFile);
+                Console.WriteLine("Packing \"{0}\" mask: \"{1}\", out: \"{2}\"", afolder, opt.FileMask, outfile);
+                ArcFolder(afolder, opt.FileMask, outfile);
+            } else return 1;
+            return 0;
+        }
 
         static string DbrFileToRecName(string dbrfile, string packfolder)
         {
@@ -672,6 +743,26 @@ namespace arzedit
             return true;
         }
 
+        static void ArcFolder(string afolder, string afilemask, string outfilename)
+        {
+            afolder = Path.GetFullPath(afolder);
+            using (FileStream ofs = new FileStream(outfilename, FileMode.Create))
+            using (ARCWriter awriter = new ARCWriter(ofs))
+            {
+                string[] afiles = Directory.GetFiles(afolder, afilemask, SearchOption.AllDirectories);
+                foreach (string afile in afiles)
+                {
+                    DateTime afiletime = File.GetLastWriteTime(afile);
+                    string aentry = Path.GetFullPath(afile).Substring(afolder.Length).Replace(Path.DirectorySeparatorChar, '/').ToLower().TrimStart('/');
+                    using (FileStream ifs = new FileStream(afile, FileMode.Open))
+                    {
+                        ifs.Seek(0, SeekOrigin.Begin); // Go to start
+                        awriter.WriteFromStream(aentry, afiletime, ifs); // Pack and write
+                    }
+                }
+            }
+        }
+
         static void PrintUsage()
         {
             Console.WriteLine("\nGrim Dawn Arz Editor, v{0}", VERSION);
@@ -827,24 +918,24 @@ namespace arzedit
                         bf.Write(bufheader);
                         // Calculate hashes:
 
-                        Adler32.checksum = 1;
+                        Adler32 adler = new Adler32();
                         byte[] bufrdata = mrdata.GetBuffer();
-                        uint csrdata = Adler32.ComputeHash(bufrdata, 0, bufrdata.Length);
+                        uint csrdata = adler.ComputeHash(bufrdata, 0, bufrdata.Length);
                         // Console.WriteLine("Data 0x{0:X4}", csrdata);
-                        Adler32.checksum = 1;
+                        adler = new Adler32();
                         byte[] bufrtable = mrtable.GetBuffer();
-                        uint csrtable = Adler32.ComputeHash(bufrtable, 0, bufrtable.Length);
+                        uint csrtable = adler.ComputeHash(bufrtable, 0, bufrtable.Length);
                         // Console.WriteLine("Record Table 0x{0:X4}", csrtable);
-                        Adler32.checksum = 1;
+                        adler = new Adler32();
                         byte[] bufstable = mstable.GetBuffer();
-                        uint csstable = Adler32.ComputeHash(bufstable, 0, bufstable.Length);
+                        uint csstable = adler.ComputeHash(bufstable, 0, bufstable.Length);
                         // Console.WriteLine("String Table 0x{0:X4}", csstable);
                         // Checksum for whole file w/o footer
-                        Adler32.checksum = 1;
-                        Adler32.ComputeHash(bufheader, 0, bufheader.Length); // Header
-                        Adler32.ComputeHash(bufrdata, 0, bufrdata.Length); // Data
-                        Adler32.ComputeHash(bufrtable, 0, bufrtable.Length); // Data Table
-                        uint csall = Adler32.ComputeHash(bufstable, 0, bufstable.Length); // String Table
+                        adler = new Adler32();
+                        adler.ComputeHash(bufheader, 0, bufheader.Length); // Header
+                        adler.ComputeHash(bufrdata, 0, bufrdata.Length); // Data
+                        adler.ComputeHash(bufrtable, 0, bufrtable.Length); // Data Table
+                        uint csall = adler.ComputeHash(bufstable, 0, bufstable.Length); // String Table
                         // Console.WriteLine("All 0x{0:X4}", Adler32.checksum);
 
                         // Write data
@@ -874,40 +965,6 @@ namespace arzedit
             }
         }
 
-        static class Adler32
-        {
-            public static uint checksum = 1;
-
-            /// <summary>Performs the hash algorithm on given data array.</summary>
-            /// <param name="bytesArray">Input data.</param>
-            /// <param name="byteStart">The position to begin reading from.</param>
-            /// <param name="bytesToRead">How many bytes in the bytesArray to read.</param>
-            public static uint ComputeHash(byte[] bytesArray, int byteStart, int bytesToRead)
-            {
-                int n;
-                uint s1 = checksum & 0xFFFF;
-                uint s2 = checksum >> 16;
-
-                while (bytesToRead > 0)
-                {
-                    n = (3800 > bytesToRead) ? bytesToRead : 3800;
-                    bytesToRead -= n;
-
-                    while (--n >= 0)
-                    {
-                        s1 = s1 + (uint)(bytesArray[byteStart++] & 0xFF);
-                        s2 = s2 + s1;
-                    }
-
-                    s1 %= 65521;
-                    s2 %= 65521;
-                }
-
-                checksum = (s2 << 16) | s1;
-                return checksum;
-            }
-        }
-
         class VerbOptions
         {
             [VerbOption("set", HelpText = "Set values in database")]
@@ -918,6 +975,10 @@ namespace arzedit
             public ExtractOptions ExtractVerb { get; set; }
             [VerbOption("pack", HelpText = "Pack records to database")]
             public PackOptions PackVerb { get; set; }
+            [VerbOption("unarc", HelpText = "Unpack arc file(s)")]
+            public UnarcOptions UnarcVerb { get; set; }
+            [VerbOption("arc", HelpText = "pack arc file(s)")]
+            public ArcOptions ArcVerb { get; set; }
             [HelpOption]
             public string GetUsage()
             {
@@ -952,7 +1013,7 @@ namespace arzedit
             [Option('f', "file", HelpText="Record file (*.dbr) to be assigned to the record.")]
             public string SetFile { get; set; }
 
-            [OptionArray('e', "entries", HelpText= "Entry names with values. Entry example: \"playerDevotionCap,56,\", Multiple entries are separated by spaces, if entry contains spaces it must be enclosed in doubleqoutes (\").")]
+            [OptionArray('e', "entries", HelpText= "Entry names with values. Entry example: \"playerDevotionCap,56,\", Multiple entries are separated by spaces, if entry contains spaces it must be enclosed in doublequotes (\").")]
             public string[] SetEntries { get; set; }
 
             // List<string> modentries = new List<string>();
@@ -1011,6 +1072,22 @@ namespace arzedit
             {
                 return HelpText.AutoBuild(this, (HelpText current) => HelpText.DefaultParsingErrorsHandler(this, current));
             }
+        }
+
+        class UnarcOptions {
+            [ValueList(typeof(List<string>))]
+            public List<string> ArcFiles { get; set; }
+            [Option('o', "out-path", HelpText = "Path where to store unpacked files")]
+            public string OutPath { get; set; }
+        }
+
+        class ArcOptions {
+            [ValueOption(0)]
+            public string Folder { get; set; }
+            [ValueOption(1)]
+            public string OutFile { get; set; }
+            [Option('m', "mask", HelpText = "Mask for file inclusion, All files are added if not specified")]
+            public string FileMask { get; set; }
         }
 
         static List<string> ReadStringTable(BinaryReader br, uint size)
@@ -1417,7 +1494,7 @@ namespace arzedit
                 default:
                     Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
                     throw new Exception("Unknown variable type");
-                    break;
+                    // break;
             }
 
             values = new int[0];
@@ -1464,9 +1541,11 @@ namespace arzedit
 
         public bool TryAssign(string fromstr) {
             string[] estrs = fromstr.Split(',');
-            if (estrs.Length > 3 || estrs.Length == 1)
+            // if (estrs.Length > 3 || estrs.Length == 1)
+            if (estrs.Length != 3)
             {
                 Console.WriteLine("Malformed assignment string \"{0}\"", fromstr);
+                // Console.ReadKey(true);
                 return false;
             }
             string entryname = estrs[0];
@@ -1610,7 +1689,6 @@ namespace arzedit
             return sb.ToString();
         }
     }
-
 
     class ARZHeader {
         public const int HEADER_SIZE = 24;
