@@ -279,6 +279,11 @@ namespace arzedit {
                 TemplateNode vart = null;
                 string[] eexpl = estr.Split(',');
                 string varname = eexpl[0];
+                if (eexpl.Length < 2)
+                {
+                    Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", Name, estr);
+                    continue;
+                }
                 string vvalue = eexpl[1];
                 if (varname == "templateName")
                 {
@@ -303,7 +308,8 @@ namespace arzedit {
 
                 if (vart == null)
                 {
-                    Console.WriteLine("Record \"{1}\" Variable \"{0}\" not found in any included templates.", varname, rname);
+                    // DEBUG:
+                    // Console.WriteLine("Record \"{1}\" Varia1ble \"{0}\" not found in any included templates.", varname, rname);
                 }
                 else
                 {
@@ -609,7 +615,7 @@ namespace arzedit {
             // if (estrs.Length > 3 || estrs.Length == 1)
             if (estrs.Length != 3)
             {
-                Console.WriteLine("Malformed assignment string \"{0}\"", fromstr);
+                Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", parent.Name, fromstr);
                 // Console.ReadKey(true);
                 return false;
             }
@@ -623,8 +629,8 @@ namespace arzedit {
             if (string.IsNullOrWhiteSpace(estrs[1]))
             {
                 estrs[1] = defaultsto;
-                Console.WriteLine("{0} Defaults To {1}", entryname, estrs[1]);
-                // Ignore right now
+                // Console.WriteLine("{0} Defaults To {1}", entryname, estrs[1]);
+                // TODO: Ignore right now, may be implement defaulting later
                 return false;
             }
 
@@ -683,12 +689,13 @@ namespace arzedit {
                                 }
                                 catch
                                 {
-                                    Console.WriteLine("Could not parse Hex number {0}", strs[i]);
+                                    // Console.WriteLine("Could not parse Hex number {0}", strs[i]); // DEBUG
                                 }
                             }
                             else
                             {
-                                Console.WriteLine("Error parsing integer value #{0}=\"{1}\", Defaulting to 0", i, strs[i]);
+                                // DEBUG:
+                                // Console.WriteLine("Record {3} Entry {0} Error parsing integer value #{1}=\"{2}\", Defaulting to 0", Name, i, strs[i], parent.Name);
                                 // return false;
                                 nvalues[i] = 0; // Set default
                             }
@@ -697,7 +704,7 @@ namespace arzedit {
                     case ARZEntryType.Real:
                         if (!float.TryParse(strs[i], out fval))
                         {
-                            Console.WriteLine("Error parsing float value #{0}=\"{1}\", Defaulting to 0.0", i, strs[i]);
+                            // Console.WriteLine("Error parsing float value #{0}=\"{1}\", Defaulting to 0.0", i, strs[i]); // DEBUG
                             // return false;
                             nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(0.0), 0);
                         }
@@ -711,7 +718,7 @@ namespace arzedit {
                     case ARZEntryType.Bool:
                         if (!int.TryParse(strs[i], out nvalues[i]) || nvalues[i] > 1)
                         {
-                            Console.WriteLine("Error parsing boolean value #{0}=\"{1}\", Defaulting to False", i, strs[i]);
+                            // Console.WriteLine("Error parsing boolean value #{0}=\"{1}\", Defaulting to False", i, strs[i]); // DEBUG
                             nvalues[i] = 0;
                             // return false;
                         }

@@ -417,7 +417,7 @@ namespace arzedit
             fstream = astream;
             hdr = new ARCHeader();
             hdr.ReadStream(astream);
-            hdr.PrintHeader();
+            // hdr.PrintHeader(); // DEBUG:
 
             // Read part table:
             // TODO - take out creating and disposing of BinaryReader out of the loop
@@ -443,10 +443,12 @@ namespace arzedit
             {
                 ARCTocEntry tocentry = new ARCTocEntry();
                 tocentry.ReadStream(astream);
+                /*// DEBUG:
                 if (tocentry.GetEntryString(strs) == "")
                     tocentry.PrintTocEntry(strs); // Debug
                 if (tocentry.EntryType != 3)
                     tocentry.PrintTocEntry(strs);
+                */
                 toc.Add(tocentry);
             }
         }

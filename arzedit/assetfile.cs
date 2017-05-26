@@ -276,7 +276,7 @@ namespace arzedit
             }
             else if (Type == AssetType.Unknown)
             {
-                Console.WriteLine("Cannot read asset {0}, unknown type \"{1}\". Please use AssetManager.", this.resname, new string(TypeMagick));
+                Console.WriteLine("Cannot read asset {0}, unknown type \"{1}\" or not implemented. Please use AssetManager.", this.resname, new string(TypeMagick));
             }
             else
             {

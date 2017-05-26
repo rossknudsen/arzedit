@@ -13,7 +13,7 @@ namespace arzedit
     {
         // static string ArzFile = "database.arz";
         // static string OutputFile = "database2.arz";
-        const string VERSION = "0.1b4";
+        const string VERSION = "0.2b0";
         static byte[] mdata = null;
         static byte[] footer = new byte[16];
         //TODO: Move those static fields to an instance object, arz file should be instance of an object, not stored in static fields in main program
@@ -431,19 +431,33 @@ namespace arzedit
         static int BuildAssets(string assetfolder, string sourcefolder, string buildfolder, string gamefolder)
         {
             string[] assetfiles = Directory.GetFiles(assetfolder, "*", SearchOption.AllDirectories);
-            foreach (string afile in assetfiles) {
-                AssetBuilder abuilder = new AssetBuilder(afile, assetfolder, gamefolder);
-                abuilder.CompileAsset(sourcefolder, buildfolder);
+            int ci = 0;
+            using (ProgressBar progress = new ProgressBar())
+            {
+                foreach (string afile in assetfiles)
+                {
+                    AssetBuilder abuilder = new AssetBuilder(afile, assetfolder, gamefolder);
+                    abuilder.CompileAsset(sourcefolder, buildfolder);
+                    progress.Report((double)ci++ / assetfiles.Length);
+                }
             }
             return 0;
         }
 
         static int ProcessBuildVerb(BuildOptions opt)
         {
-            string packfolder = Path.GetFullPath(opt.ModPath.TrimEnd(Path.DirectorySeparatorChar));
-            string modname = Path.GetFileName(packfolder);
-            string buildfolder = string.IsNullOrEmpty(opt.BuildPath) ? packfolder : Path.GetFullPath(opt.BuildPath);
-            string gamefolder = string.IsNullOrEmpty(opt.GameFolder) ? Path.GetFullPath(".") : opt.GameFolder; // TODO: Make game folder detection more robust, check dir one level up
+            DateTime beginbuild = DateTime.Now;
+            // Weird - parameters come in mangled, there's added " at the end if passed string ends with \";
+            string packfolder = ""; string modname = ""; string buildfolder = ""; string gamefolder = "";
+            try
+            {
+                packfolder = Path.GetFullPath(opt.ModPath);
+                modname = Path.GetFileName(packfolder);
+                buildfolder = string.IsNullOrEmpty(opt.BuildPath) ? packfolder : Path.GetFullPath(opt.BuildPath);
+                gamefolder = string.IsNullOrEmpty(opt.GameFolder) ? Path.GetFullPath(".") : Path.GetFullPath(opt.GameFolder); // TODO: Make game folder detection more robust, check dir one level up
+            } catch {
+                Console.WriteLine("Error parsing parameters, check for escape characters, especially \\\" (folders should not end in \\).");
+            }
             if (!File.Exists(Path.Combine(gamefolder, "Grim Dawn.exe"))) {
                 Console.WriteLine("Need correct game folder with mod tools (use parameter -g)");
                 return 1;
@@ -487,7 +501,7 @@ namespace arzedit
                         TemplateNode node = new TemplateNode(null, entryname);
                         node.ParseNode(strlist.ToArray());
                         templates.Add(entryname, node);
-                        Console.WriteLine("Template {0}, Has Lines {1}", entryname, strlist.Count);
+                        // Console.WriteLine("Template {0}, Has Lines {1}", entryname, strlist.Count);
                     }
                 }
             }
@@ -511,6 +525,16 @@ namespace arzedit
             {
                 Console.WriteLine("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
                 return 1;
+            }
+
+            // Fill include list
+            foreach (KeyValuePair<string, TemplateNode> tpln in templates)
+            {
+                // Console.WriteLine("{0} - {1} name {2}", tpln.Key, tpln.Value.kind, tpln.Value.values["name"]);
+                tpln.Value.FillIncludes(templates);
+                // DEBUG:
+                // if (tpln.Value.includes.Count > 0)
+                    // Console.WriteLine("Template {0} has {1} includes", tpln.Value.TemplateFile, tpln.Value.includes.Count);
             }
 
             DateTime end = DateTime.Now;
@@ -538,7 +562,7 @@ namespace arzedit
                     for (int cf = 0; cf < alldbrs.Length; cf++)
                     {
                         string dbrfile = alldbrs[cf];
-                        Console.WriteLine("Packing {0}", dbrfile);
+                        // Console.WriteLine("Packing {0}", dbrfile); // DEBUG
                         string[] recstrings = File.ReadAllLines(dbrfile);
                         arzw.WriteFromLines(DbrFileToRecName(dbrfile, packfolder), recstrings);
                         // Show Progress
@@ -557,12 +581,15 @@ namespace arzedit
             Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
 
             // Save Data
-            string outputfile = Path.Combine(buildfolder, "database", modname + ".arz");
+            string dbfolder = Path.Combine(buildfolder, "database");
+            if (!Directory.Exists(dbfolder))
+                Directory.CreateDirectory(dbfolder);
+            string outputfile = Path.Combine(dbfolder, modname + ".arz");
             using (FileStream fs = new FileStream(outputfile, FileMode.Create))
                 arzw.SaveToStream(fs);
 
             // Pack resources
-            string resfolder = Path.GetFullPath(Path.Combine(packfolder, "resources"));
+            string resfolder = Path.GetFullPath(Path.Combine(buildfolder, "resources"));
             if (Directory.Exists(resfolder))
             {
                 Console.WriteLine("Packing resources:");
@@ -570,11 +597,12 @@ namespace arzedit
                 foreach (string resdir in resdirs)
                 {
                     string outfile = Path.Combine(resfolder, Path.GetFileName(resdir) + ".arc");
-                    Console.WriteLine("Packing \"{0}\", to: \"{1}\"", resdir, outfile);
+                    Console.WriteLine("Packing folder \"{0}\", to: \"{1}\"", resdir, outfile);
                     ArcFolder(resdir, "*", outfile);
                 }
             }
-            Console.ReadKey(true);
+            Console.WriteLine("Build successful. Done ({0:c})", (TimeSpan)(DateTime.Now - beginbuild));
+            // Console.ReadKey(true);
             return 0;
         }
 
@@ -933,12 +961,6 @@ namespace arzedit
                         Console.WriteLine("Template \"{0}\" already parsed, overriding with {1}", tpath, tfile); // DEBUG
                     templates[tpath] = ntemplate;
                 }
-            }
-
-            foreach (KeyValuePair<string, TemplateNode> tpln in templates)
-            {
-                // Console.WriteLine("{0} - {1} name {2}", tpln.Key, tpln.Value.kind, tpln.Value.values["name"]);
-                tpln.Value.FillIncludes(templates);
             }
             return templates;
         } // BuildTemplateDict

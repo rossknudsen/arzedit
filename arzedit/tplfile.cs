@@ -136,8 +136,9 @@ namespace arzedit
                         // Console.WriteLine("Include {0}", incstr);
                         // Check for cycles
                         TemplateNode itemplate = alltempl[incstr];
-                        if (itemplate == this || includes.Contains(itemplate))
-                            Console.WriteLine("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
+                        // DEBUG:
+                        // if (itemplate == this || includes.Contains(itemplate))
+                           // Console.WriteLine("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
                         includes.Add(itemplate);
                     }
                     else
@@ -145,7 +146,7 @@ namespace arzedit
                         TemplateNode tproot = this;
                         while (tproot.parent != null) tproot = tproot.parent;
                         string intemplate = alltempl.First(t => t.Value == tproot).Key;
-                        Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate);
+                        // Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate); // Debug
                     }
                 }
                 else if (sub.kind == "group")
