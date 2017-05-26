@@ -334,8 +334,16 @@ namespace arzedit
                 newpart.PartOffset = (int)wstream.Position;
                 newpart.DecompressedSize = read;
                 byte[] cbuffer = LZ4Codec.Encode(buffer, 0, read);
-                newpart.CompressedSize = cbuffer.Length;
-                wstream.Write(cbuffer, 0, cbuffer.Length);
+                if (cbuffer.Length < read)
+                {
+                    newpart.CompressedSize = cbuffer.Length;
+                    wstream.Write(cbuffer, 0, cbuffer.Length);
+                } else
+                {
+                    // Add uncompressed if compression fails
+                    newpart.CompressedSize = read;
+                    wstream.Write(buffer, 0, read);
+                }
                 wparts.Add(newpart);
                 csize += cbuffer.Length;
                 partcount += 1;
@@ -437,6 +445,8 @@ namespace arzedit
                 tocentry.ReadStream(astream);
                 if (tocentry.GetEntryString(strs) == "")
                     tocentry.PrintTocEntry(strs); // Debug
+                if (tocentry.EntryType != 3)
+                    tocentry.PrintTocEntry(strs);
                 toc.Add(tocentry);
             }
         }

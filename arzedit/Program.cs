@@ -17,7 +17,8 @@ namespace arzedit
         static byte[] mdata = null;
         static byte[] footer = new byte[16];
         //TODO: Move those static fields to an instance object, arz file should be instance of an object, not stored in static fields in main program
-        public static List<string> strtable = null; 
+        public static List<string> strtable = null;
+        public static ARZStrings astrtable = null;
         public static List<int> strrefcount = null;
         public static SortedDictionary<string, int> strsearchlist = null;
         public static HashSet<string> resfiles = null;
@@ -45,6 +46,10 @@ namespace arzedit
                 {
                     return ProcessPackVerb(iOpt as PackOptions);
                 }
+                else if (iVerb == "build")
+                {
+                    return ProcessBuildVerb(iOpt as BuildOptions);
+                }
                 else if (iVerb == "get")
                 {
                     GetOptions opt = iOpt as GetOptions;
@@ -67,6 +72,32 @@ namespace arzedit
         }
 
         static int ProcessSetVerb(SetOptions opt)
+        {
+            Console.WriteLine("Setting records is not implemented yet");
+            return 1;
+            /*
+            if (string.IsNullOrEmpty(opt.OutputFile)) opt.OutputFile = opt.InputFile;
+            ARZWriter arzw = new ARZWriter();
+
+            byte[] mdata = File.ReadAllBytes(opt.InputFile);
+            using (MemoryStream memory = new MemoryStream(mdata)) { 
+                ARZReader arzr = new ARZReader(memory);
+                for (int i = 0; i < arzr.Count; i++)
+                {
+                    ARZRecord rec = arzr[i];
+                    arzw.WriteFromRecord(arzr[i]);
+                    rec.DiscardData(); // Discard record data as it's not needed now
+                }
+            }
+
+            using (FileStream fs = new FileStream(opt.OutputFile, FileMode.Create))
+                arzw.SaveToStream(fs);
+
+            return 0;
+            //*/
+        }
+
+        static int ProcessSetVerb_Old(SetOptions opt)
         {
             if (string.IsNullOrEmpty(opt.OutputFile)) opt.OutputFile = opt.InputFile;
 
@@ -242,7 +273,8 @@ namespace arzedit
             if (pchanged || bchanged || fchanged || echanged)
             {
                 if (fchanged || echanged && rec != null) rec.PackData();
-                if (!AskSaveData(opt.OutputFile, opt.ForceOverwrite)) return 1;
+                // if (!AskSaveData(opt.OutputFile, opt.ForceOverwrite)) return 1;
+                throw new NotImplementedException();
             }
             else
             {
@@ -252,7 +284,72 @@ namespace arzedit
             return 0;
         } // ProcessSetVerb
 
-        static int ProcessExtractVerb(ExtractOptions opt)
+        static int ProcessExtractVerb(ExtractOptions opt) {
+            //using ()
+            byte[] mdata = File.ReadAllBytes(opt.InputFile);
+            DateTime start = DateTime.Now;
+            using (MemoryStream memory = new MemoryStream(mdata))
+            {
+                ARZReader arzr = new ARZReader(memory);
+
+                string outpath = null;
+                if (string.IsNullOrEmpty(opt.OutputPath))
+                    outpath = Directory.GetCurrentDirectory();
+                else
+                    outpath = Path.GetFullPath(opt.OutputPath);
+
+                Console.WriteLine("Extracting to \"{0}\" ...", outpath);
+
+                char ans = 'n';
+                bool overwriteall = opt.ForceOverwrite;
+                using (ProgressBar progress = new ProgressBar())
+                {
+                    // foreach (ARZRecord rec in rectable)
+                    for (int i = 0; i < arzr.Count; i++)
+                    {
+                        ARZRecord rec = arzr[i]; 
+                        string filename = Path.Combine(outpath, rec.Name.Replace('/', Path.DirectorySeparatorChar));
+                        // Console.WriteLine("Writing \"{0}\"", filename); // Debug
+                        Directory.CreateDirectory(Path.GetDirectoryName(filename));
+                        bool fileexists = File.Exists(filename);
+                        if (!overwriteall && fileexists)
+                        {
+                            progress.SetHidden(true);
+                            ans = char.ToLower(Ask(string.Format("File \"{0}\" exists, overwrite? yes/no/all/cancel (n): ", filename), "yYnNaAcC", 'n'));
+                            if (ans == 'c')
+                            {
+                                Console.WriteLine("Aborted by user");
+                                return 1;
+                            };
+                            progress.SetHidden(false);
+                            overwriteall = ans == 'a';
+                        }
+
+                        if (!fileexists || overwriteall || ans == 'y')
+                        {
+                            try
+                            {
+                                rec.SaveToFile(filename);
+                                File.SetCreationTime(filename, rec.rdFileTime); // TODO: Check if this is needed
+                            }
+                            catch (Exception e)
+                            {
+                                Console.WriteLine("Error writing file \"{0}\", Message: ", filename, e.Message);
+                                return 1;
+                            }
+                        }
+
+                        rec.DiscardData();
+                        progress.Report(((double)i) / arzr.Count);
+                    }
+                }
+            }
+            DateTime end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+            return 0;
+        }
+
+        static int ProcessExtractVerb_Old(ExtractOptions opt)
         {
             Console.Write("Parsing database ... ");
             DateTime start = DateTime.Now;
@@ -268,12 +365,14 @@ namespace arzedit
 
             Console.WriteLine("Extracting to \"{0}\" ...", outpath);
 
+
             char ans = 'n';
             bool overwriteall = opt.ForceOverwrite;
             start = DateTime.Now;
             using (ProgressBar progress = new ProgressBar())
             {
                 int ci = 0;
+                
                 foreach (ARZRecord rec in rectable)
                 {
                     string filename = Path.Combine(outpath, strtable[rec.rfid].Replace('/', Path.DirectorySeparatorChar));
@@ -329,9 +428,164 @@ namespace arzedit
             return 0;
         } // ProcessExtractVerb
 
+        static int BuildAssets(string assetfolder, string sourcefolder, string buildfolder, string gamefolder)
+        {
+            string[] assetfiles = Directory.GetFiles(assetfolder, "*", SearchOption.AllDirectories);
+            foreach (string afile in assetfiles) {
+                AssetBuilder abuilder = new AssetBuilder(afile, assetfolder, gamefolder);
+                abuilder.CompileAsset(sourcefolder, buildfolder);
+            }
+            return 0;
+        }
+
+        static int ProcessBuildVerb(BuildOptions opt)
+        {
+            string packfolder = Path.GetFullPath(opt.ModPath.TrimEnd(Path.DirectorySeparatorChar));
+            string modname = Path.GetFileName(packfolder);
+            string buildfolder = string.IsNullOrEmpty(opt.BuildPath) ? packfolder : Path.GetFullPath(opt.BuildPath);
+            string gamefolder = string.IsNullOrEmpty(opt.GameFolder) ? Path.GetFullPath(".") : opt.GameFolder; // TODO: Make game folder detection more robust, check dir one level up
+            if (!File.Exists(Path.Combine(gamefolder, "Grim Dawn.exe"))) {
+                Console.WriteLine("Need correct game folder with mod tools (use parameter -g)");
+                return 1;
+            }
+            // Assets
+            Console.Write("Compiling Assets ... ");
+            BuildAssets(Path.Combine(packfolder, "assets"), Path.Combine(packfolder, "source"), Path.Combine(buildfolder, "resources"), gamefolder);
+            Console.WriteLine("Done");
+
+            // Now Build Templates:
+            Console.Write("Parsing templates ... ");
+            DateTime start = DateTime.Now;
+
+            Dictionary<string, TemplateNode> templates = new Dictionary<string, TemplateNode>();
+
+            ARCFile vanillatpl = new ARCFile();
+            using (FileStream fs = new FileStream(Path.Combine(gamefolder, "database", "templates.arc"), FileMode.Open))
+            {
+                vanillatpl.ReadStream(fs);
+                foreach (ARCTocEntry aentry in vanillatpl.toc)
+                {
+                    List<string> strlist = new List<string>();
+                    using (MemoryStream tplmem = new MemoryStream())
+                    {
+                        vanillatpl.UnpackToStream(aentry, tplmem);
+                        tplmem.Seek(0, SeekOrigin.Begin);
+                        using (StreamReader sr = new StreamReader(tplmem))
+                        {
+                            while (!sr.EndOfStream)
+                            {
+                                strlist.Add(sr.ReadLine());
+                            }
+                        }
+                    }
+                    string entryname = "database/templates/" + aentry.GetEntryString(vanillatpl.strs);
+                    if (strlist.Count > 0 && entryname.ToLower().EndsWith(".tpl"))
+                    {
+                        // if (entryname == "chainlaserbeam.tpl")
+                           // entryname = entryname;
+
+                        TemplateNode node = new TemplateNode(null, entryname);
+                        node.ParseNode(strlist.ToArray());
+                        templates.Add(entryname, node);
+                        Console.WriteLine("Template {0}, Has Lines {1}", entryname, strlist.Count);
+                    }
+                }
+            }
+
+            // Now all other templates:
+            string[] tfolders = null;
+            if (opt.TemplatePaths != null)
+            {
+                tfolders = opt.TemplatePaths;
+            }
+            else
+            {
+                tfolders = new string[1] { opt.ModPath };
+            }
+
+            try
+            {
+                templates = BuildTemplateDict(tfolders, templates);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
+                return 1;
+            }
+
+            DateTime end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            // Got Templates
+            Console.Write("Packing Database ... ");
+            start = DateTime.Now;
+            string[] alldbrs = null;
+            try
+            {
+                alldbrs = Directory.GetFiles(packfolder, "*.dbr", SearchOption.AllDirectories);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Error listing *.dbr files, reason - {0} ", e.Message);
+                return 1;
+            }
+
+            ARZWriter arzw = new ARZWriter(templates);
+            try
+            {
+                using (ProgressBar progress = new ProgressBar())
+                {
+                    for (int cf = 0; cf < alldbrs.Length; cf++)
+                    {
+                        string dbrfile = alldbrs[cf];
+                        Console.WriteLine("Packing {0}", dbrfile);
+                        string[] recstrings = File.ReadAllLines(dbrfile);
+                        arzw.WriteFromLines(DbrFileToRecName(dbrfile, packfolder), recstrings);
+                        // Show Progress
+                        progress.Report((double)cf / alldbrs.Length);
+                    } // for int cf = 0 ...
+                } // using progress
+            }
+            catch (Exception e)
+            {
+                Console.ReadKey(true);
+                Console.WriteLine("Error while parsing records. Message: {0}\nStack Trace:\n{1}", e.Message, e.StackTrace);
+                return 1;
+            }
+
+            end = DateTime.Now;
+            Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
+
+            // Save Data
+            string outputfile = Path.Combine(buildfolder, "database", modname + ".arz");
+            using (FileStream fs = new FileStream(outputfile, FileMode.Create))
+                arzw.SaveToStream(fs);
+
+            // Pack resources
+            string resfolder = Path.GetFullPath(Path.Combine(packfolder, "resources"));
+            if (Directory.Exists(resfolder))
+            {
+                Console.WriteLine("Packing resources:");
+                string[] resdirs = Directory.GetDirectories(resfolder, "*", SearchOption.TopDirectoryOnly);
+                foreach (string resdir in resdirs)
+                {
+                    string outfile = Path.Combine(resfolder, Path.GetFileName(resdir) + ".arc");
+                    Console.WriteLine("Packing \"{0}\", to: \"{1}\"", resdir, outfile);
+                    ArcFolder(resdir, "*", outfile);
+                }
+            }
+            Console.ReadKey(true);
+            return 0;
+        }
+
         static int ProcessPackVerb(PackOptions opt)
         {
             string packfolder = Path.GetFullPath(opt.InputPath);
+
+            // Console.ReadKey(true); // DEBUG
+
+            // return 0;
+            //
             if (string.IsNullOrEmpty(opt.OutputFile))
             {
                 Console.WriteLine("Please specify output file as second parameter!");
@@ -371,6 +625,7 @@ namespace arzedit
             // create empty strtable
 
             // Check for peeking
+            /*
             bool peek = false;
             List<string> peekstrtable = null;
             List<ARZRecord> peekrectable = null;
@@ -388,7 +643,7 @@ namespace arzedit
             {
                 resfiles = BuildResourceSet(Path.Combine(packfolder, "resources"));
             }
-
+            //*/
             // Pack records
             Console.Write("Packing ... ");
             start = DateTime.Now;
@@ -402,6 +657,7 @@ namespace arzedit
                 return 1;
             }
 
+            /*
             if (opt.CheckReferences)
             {
                 dbrfiles = new HashSet<string>();
@@ -409,7 +665,9 @@ namespace arzedit
                 {
                     dbrfiles.Add(DbrFileToRecName(dbrfile, packfolder));
                 }
-            }
+            }*/
+
+            ARZWriter arzw = new ARZWriter(templates);
             try
             {
                 using (ProgressBar progress = new ProgressBar())
@@ -418,15 +676,18 @@ namespace arzedit
                     {
                         string dbrfile = alldbrs[cf];
                         string[] recstrings = File.ReadAllLines(dbrfile);
-                        ARZRecord nrec = new ARZRecord(DbrFileToRecName(dbrfile, packfolder), recstrings, templates);
-                        rectable.Add(nrec);
+                        arzw.WriteFromLines(DbrFileToRecName(dbrfile, packfolder), recstrings);
+                        // ARZRecord nrec = new ARZRecord(DbrFileToRecName(dbrfile, packfolder), recstrings, templates);
+                        // ARZRecord nrec = null;
+                        // rectable.Add(nrec);
 
+                        /*
                         if (peek) // Peek and see if we have same data
                         {
                             ARZRecord peekrec = peekrectable.Find(pr => peekstrtable[pr.rfid] == strtable[nrec.rfid]);
                             CompareRecords(nrec, peekrec, strtable, peekstrtable);
                         } // If peek
-
+                        */
                         // Show Progress
                         progress.Report((double)cf / alldbrs.Length);
                     } // for int cf = 0 ...
@@ -442,8 +703,23 @@ namespace arzedit
             Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
 
             // Save Data
-            if (!AskSaveData(opt.OutputFile, opt.ForceOverwrite)) return 1;
+            if (!AskSaveData(arzw, opt.OutputFile, opt.ForceOverwrite)) return 1;
 
+
+            // Pack Resources
+            /*
+            string resfolder = Path.GetFullPath(Path.Combine(packfolder, "resources"));
+            if (Directory.Exists(resfolder)) {
+                Console.WriteLine("Packing resources:");
+                string[] resdirs = Directory.GetDirectories(resfolder, "*", SearchOption.TopDirectoryOnly);
+                foreach (string resdir in resdirs)
+                {
+                    string outfile = Path.Combine(resfolder, Path.GetFileName(resdir) + ".arc");
+                    Console.WriteLine("Packing \"{0}\", to: \"{1}\"", resdir, outfile);
+                    ArcFolder(resdir, "*", outfile);
+                }
+            }
+            */
             return 0;
         } // ProcessPackVerb
 
@@ -473,7 +749,7 @@ namespace arzedit
                     archive.ReadStream(arcstream);
                     archive.UnpackAll(arcsub);
                     // Debug repacking:
-                    archive.RepackToFile(Path.Combine(Path.GetDirectoryName(arcfilename), Path.GetFileNameWithoutExtension(arcfilename) + "r" + Path.GetExtension(arcfilename)));
+                    // archive.RepackToFile(Path.Combine(Path.GetDirectoryName(arcfilename), Path.GetFileNameWithoutExtension(arcfilename) + "r" + Path.GetExtension(arcfilename)));
                 }
 
             }
@@ -535,14 +811,14 @@ namespace arzedit
                     {
                         for (int k = 0; k < pe.dcount; k++)
                         {
-                            if (pe.dtype == 0 || pe.dtype == 3)
+                            if (pe.dtype == ARZEntryType.Int || pe.dtype == ARZEntryType.Bool)
                             {
                                 if (pe.values[k] != ne.values[k]) {
                                     Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", newstrtable[ne.dstrid], k, pe.values[k], ne.values[k], newstrtable[nrec.rfid]);
                                     differs = true;
                                 }
                             }
-                            else if (pe.dtype == 1)
+                            else if (pe.dtype == ARZEntryType.Real)
                             {
                                 if (pe.AsFloat(k) != ne.AsFloat(k)) {
                                     Console.WriteLine("Record {4} Entry {0} value {1} values differ peek \"{2}\" != new \"{3}\"", newstrtable[ne.dstrid], k, pe.AsFloat(k), pe.AsFloat(k), newstrtable[nrec.rfid]);
@@ -565,14 +841,16 @@ namespace arzedit
             return differs;
         }
 
-        static bool AskSaveData(string outputfile, bool force = false)
+        static bool AskSaveData(ARZWriter arzw, string outputfile, bool force = false)
         {
             if (force || !File.Exists(outputfile) || char.ToUpper(Ask(string.Format("Output file \"{0}\" exists, overwrite? [y/n] n: ", Path.GetFullPath(outputfile)), "yYnN", 'N')) == 'Y')
             {
                 DateTime start = DateTime.Now;
                 Console.Write("Saving database ... ");
-                CompactStringlist();
-                SaveData(outputfile);
+                // CompactStringlist();
+                // SaveData(outputfile);
+                using (FileStream fs = new FileStream(outputfile, FileMode.Create))
+                    arzw.SaveToStream(fs);
                 DateTime end = DateTime.Now;
                 Console.WriteLine("Done ({0:c})", (TimeSpan)(end - start));
                 return true;
@@ -614,9 +892,9 @@ namespace arzedit
             return resfiles;
         } // BuildResourceSet()
 
-        static Dictionary<string, TemplateNode> BuildTemplateDict(string[] tfolders)
+        static Dictionary<string, TemplateNode> BuildTemplateDict(string[] tfolders, Dictionary<string, TemplateNode> templates = null)
         {
-            Dictionary<string, TemplateNode> templates = new Dictionary<string, TemplateNode>();
+            if (templates == null) templates = new Dictionary<string, TemplateNode>();
             foreach (string tfolder in tfolders)
             {
                 string tfullpath = Path.GetFullPath(tfolder).TrimEnd(Path.DirectorySeparatorChar);
@@ -688,7 +966,7 @@ namespace arzedit
                 using (BinaryReader reader = new BinaryReader(memory))
                 {
                     memory.Seek(0, SeekOrigin.Begin);
-                    ARZHeader header = new ARZHeader(reader);
+                    ARZHeader header = new ARZHeader(memory);
                     // header.ReadBytes(reader);
                     /* DEBUG:
                     Console.WriteLine("Unknown: {0}; Version: {1}; RecordTableStart: {2}; RecordTableSize: {3}; RecordTableEntries: {4}; StringTableStart: {5}; StringTableSize: {6};",
@@ -707,6 +985,9 @@ namespace arzedit
                     
                     memory.Seek(header.StringTableStart, SeekOrigin.Begin);
                     strtable = ReadStringTable(reader, header.StringTableSize);
+
+                    memory.Seek(header.StringTableStart, SeekOrigin.Begin);
+                    astrtable = new ARZStrings(memory, header.StringTableSize);
 
                     // Create searchable string list
                     /*
@@ -754,6 +1035,9 @@ namespace arzedit
                 {
                     DateTime afiletime = File.GetLastWriteTime(afile);
                     string aentry = Path.GetFullPath(afile).Substring(afolder.Length).Replace(Path.DirectorySeparatorChar, '/').ToLower().TrimStart('/');
+                    // string fname;
+                    // if (Path.GetFileName(afile) == "dermapteranwall01_nml.tex")
+                       // fname = afile;
                     using (FileStream ifs = new FileStream(afile, FileMode.Open))
                     {
                         ifs.Seek(0, SeekOrigin.Begin); // Go to start
@@ -975,6 +1259,8 @@ namespace arzedit
             public ExtractOptions ExtractVerb { get; set; }
             [VerbOption("pack", HelpText = "Pack records to database")]
             public PackOptions PackVerb { get; set; }
+            [VerbOption("build", HelpText = "Build mod")]
+            public BuildOptions BuildVerb { get; set; }
             [VerbOption("unarc", HelpText = "Unpack arc file(s)")]
             public UnarcOptions UnarcVerb { get; set; }
             [VerbOption("arc", HelpText = "pack arc file(s)")]
@@ -1074,6 +1360,18 @@ namespace arzedit
             }
         }
 
+        class BuildOptions {
+            [ValueOption(0)]
+            public string ModPath { get; set; }
+            [ValueOption(1)]
+            public string BuildPath { get; set; }
+            [Option('g', "game-folder", HelpText = "Grim Dawn folder (tools folder)")]
+            public string GameFolder { get; set; }
+            [OptionArray('t', "tbase", HelpText = "Folder(s) containing templates, if not specified - assumes templates are in mod folder. Order matters - later templates override prior. You would like game templates go first and your own templates second.")]
+            public string[] TemplatePaths { get; set; }
+
+        }
+
         class UnarcOptions {
             [ValueList(typeof(List<string>))]
             public List<string> ArcFiles { get; set; }
@@ -1090,7 +1388,7 @@ namespace arzedit
             public string FileMask { get; set; }
         }
 
-        static List<string> ReadStringTable(BinaryReader br, uint size)
+        static List<string> ReadStringTable(BinaryReader br, int size)
         {
             List<string> slist = new List<string>();
             slist.Capacity = 0;
@@ -1110,12 +1408,12 @@ namespace arzedit
             return slist;
         }
 
-        static List<ARZRecord> ReadRecordTable(BinaryReader br, uint rcount) {
+        static List<ARZRecord> ReadRecordTable(BinaryReader br, int rcount) {
             List<ARZRecord> rlist = new List<ARZRecord>();
             rlist.Capacity = (int)rcount;
             for (int i = 0; i < rcount; i++)
             {
-                rlist.Add(new ARZRecord(br));
+                rlist.Add(new ARZRecord(br, astrtable));
                 // ARZRecord rec = rlist.Last();
                 // Console.WriteLine("File: {0}; Type: {1}; Offset: {2}; Compressed/Decompressed: {3}/{4}; File Time: {5};", strtable[rec.rfid], rec.rtype, rec.rdOffset, rec.rdSizeCompressed, rec.rdSizeDecompressed, rec.rdFileTime);
             }
@@ -1153,7 +1451,7 @@ namespace arzedit
                 foreach (ARZEntry e in r.entries)
                 {
                     strrefcount[e.dstrid]++;
-                    if (e.dtype == 2)
+                    if (e.dtype == ARZEntryType.String)
                         foreach (int v in e.values) strrefcount[v]++;
                 }
             }
@@ -1254,7 +1552,7 @@ namespace arzedit
                 foreach (ARZEntry e in r.entries)
                 {
                     e.dstrid = map[e.dstrid];
-                    if (e.dtype == 2)
+                    if (e.dtype == ARZEntryType.String)
                         for (int i = 0; i < e.values.Length; i++)
                             e.values[i] = map[e.values[i]]; 
                 }
@@ -1263,599 +1561,6 @@ namespace arzedit
             strtable = target; // Replace string table with new one
         }
 
-    }
-
-    class ARZRecord {
-        public int rfid;
-        public string rtype;
-        public int rdOffset;
-        public int rdSizeCompressed;
-        public int rdSizeDecompressed;
-        public DateTime rdFileTime;
-        public byte[] cData;
-        public byte[] aData;
-        public List<ARZEntry> entries = null;
-
-        public ARZRecord(string rname, string[] rstrings, Dictionary<string, TemplateNode> templates)
-        {
-            rfid = Program.ModifyString(-1, rname);
-            rtype = ""; // TODO: IMPORTANT: How record type is determined, last piece of info
-            this.rdFileTime = DateTime.Now;
-            entries = new List<ARZEntry>();
-            TemplateNode tpl = null;
-            foreach (string estr in rstrings)
-            {
-                TemplateNode vart = null;
-                string[] eexpl = estr.Split(',');
-                string varname = eexpl[0];
-                string vvalue = eexpl[1];
-                if (varname == "templateName") {
-                    try
-                    {
-                        tpl = templates[vvalue];
-                        vart = TemplateNode.TemplateNameVar;
-                    } catch (KeyNotFoundException e)
-                    {
-                        Console.WriteLine("Template file \"{0}\" used by record {1} not found!", vvalue, rname);
-                        throw e;
-                    }
-                } else {
-                    // Find variable in templates
-                    if (tpl != null) // Find variable
-                        vart = tpl.FindVariable(varname);
-                }
-                if (varname.ToLower() == "class") rtype = vvalue;
-                /*
-                foreach (KeyValuePair<string, TemplateNode> tkv in templates)
-                {
-                    List<TemplateNode> nodeswithvars = tkv.Value.findValue(varname);
-                    found |= nodeswithvars.Count > 0;
-                    foreach (TemplateNode tn in nodeswithvars)
-                    {
-                        // Console.WriteLine("Found variable in {0} {1}", tkv.Key, tn.values.ToString());
-                    }
-                }
-                */
-                
-                if (vart == null)
-                {
-                    Console.WriteLine("Record \"{1}\" Variable \"{0}\" not found in any included templates.", varname, rname);
-                }
-                else {
-                    ARZEntry newentry = new ARZEntry(estr, vart, rname);
-                    entries.Add(newentry);
-                }
-            }
-            this.PackData();
-        }
-
-        public ARZRecord(BinaryReader rdata)
-        {
-            ReadBytes(rdata);
-        }
-        public void ReadBytes(BinaryReader rdata)
-        {
-            // read record info
-            rfid = rdata.ReadInt32();
-            // string record_file = strtable[rfid];
-            int rtypelen = rdata.ReadInt32();
-            rtype = new string(rdata.ReadChars(rtypelen));
-            rdOffset = rdata.ReadInt32();
-            rdSizeCompressed = rdata.ReadInt32();
-            rdSizeDecompressed = rdata.ReadInt32();
-            rdFileTime = DateTime.FromFileTimeUtc(rdata.ReadInt64());
-        }        
-
-        public List<ARZEntry> ReadData(BinaryReader brdata)
-        {
-            cData = brdata.ReadBytes(rdSizeCompressed);
-            aData = LZ4Codec.Decode(cData, 0, rdSizeCompressed, rdSizeDecompressed);
-            entries = new List<ARZEntry>();
-            // entries.Capacity = ((rdSizeDecompressed - 8) / 4); // Wrong capacity
-            using (MemoryStream eMem = new MemoryStream(aData))
-            {
-                using (BinaryReader eDbr = new BinaryReader(eMem))
-                {
-                    while (eMem.Position < eMem.Length)
-                        entries.Add(new ARZEntry(eDbr));
-                }
-            }
-            aData = null; // Free up memory
-            return entries;
-        }
-
-        public void PackData() {
-            int datasize = entries.Count * 8; // Headers
-            foreach (ARZEntry e in entries)
-                datasize += e.values.Length * 4; // + Data
-            using (MemoryStream mStream = new MemoryStream(datasize)) {
-                using (BinaryWriter bWriter = new BinaryWriter(mStream))
-                {
-                    mStream.Seek(0, SeekOrigin.Begin);                    
-                    foreach (ARZEntry e in entries) {
-                        // e.dcount;
-                        e.dcount = (ushort) e.values.Length;
-                        // Console.WriteLine("Packing {0} - Len: {1} ", Program.strtable[e.dstrid], e.dcount); // DEBUG
-                        e.WriteBytes(bWriter);
-                    }
-                }
-        
-                // Replace data
-                aData = mStream.GetBuffer();
-                rdSizeDecompressed = aData.Length;
-                cData = LZ4Codec.Encode(aData, 0, rdSizeDecompressed);
-                aData = null;
-                rdSizeCompressed = cData.Length;
-            }
-        }
-
-        public void WriteRecord(BinaryWriter rtable, int dataoffset)
-        {
-            rdOffset = dataoffset;
-            rtable.Write(rfid);
-            rtable.Write((int)rtype.Length);
-            rtable.Write(rtype.ToCharArray());
-            rtable.Write(rdOffset);
-            rtable.Write(rdSizeCompressed);
-            rtable.Write(rdSizeDecompressed);
-            rtable.Write(rdFileTime.ToFileTimeUtc());
-        }
-        
-    }
-
-    public class ARZEntry {
-        public ushort dtype;
-        public ushort dcount;
-        public int dstrid;
-        public int[] values;
-        public bool changed = false; // TODO: overhead
-        public bool isarray = false;
-        static List<string> strtable = null;
-        // static SortedList<string, int> strsearchlist = null;
-        public static List<string> StrTable { get { if (strtable == null) strtable = Program.strtable; return strtable; } set { strtable = value; } }
-        // public static SortedList<string, int> StrSearchList { get { if (strsearchlist == null) strsearchlist = Program.strsearchlist; return strsearchlist; } set { strsearchlist = value; } }
-
-        public ARZEntry(BinaryReader edata)
-        {
-            ReadBytes(edata);
-        }
-
-        public ARZEntry(string estr, TemplateNode tpl, string recname)
-        {
-            string vtype = null;
-            string entryname = estr.Split(',')[0];
-
-            try
-            {
-                vtype = tpl.values["type"];
-            }
-            catch (KeyNotFoundException e) {
-                Console.WriteLine("ERROR: Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
-                throw e; // rethrow            
-            }
-
-            isarray = tpl.values.ContainsKey("class") && tpl.values["class"] == "array"; // This is an array act accordingly when packing strings
-
-            if (vtype.StartsWith("file_")) {
-                // Check for resources
-                if (Program.resfiles != null || Program.dbrfiles != null)
-                {
-                    string[] rfiles = null;
-                    if (!isarray) rfiles = new string[1] { estr.Split(',')[1] };
-                    else { rfiles = estr.Split(',')[1].Split(';'); };
-
-                    if (vtype == "file_dbr" && Program.dbrfiles != null)
-                    {
-                        foreach (string rfile in rfiles)
-                        {
-                            if (!Program.dbrfiles.Contains(rfile))
-                            {
-                                Console.WriteLine("Missing database file \"{0}\" referenced by \"{1}\" in record \"{2}\".", rfile, entryname, recname);
-                            }
-                        }
-                    } else if (Program.resfiles != null)
-                    {
-                        foreach (string rfile in rfiles)
-                        {
-                            if (!Program.resfiles.Contains(rfile))
-                            {
-                                Console.WriteLine("Missing record file \"{0}\" referenced by \"{1}\" in record \"{2}\".", rfile, entryname, recname);
-                            }
-                        }
-                    }
-                }
-
-                vtype = "string"; // Make it string
-            }
-
-            switch (vtype) {
-                case "string":
-/* Got tired of this, all files under one hood - string
-                case "file_dbr":
-                case "file_tex":
-                case "file_msh":
-                case "file_lua":
-                case "file_qst":
-                case "file_anm":
-                case "file_ssh":
-*/
-                case "equation":
-                    dtype = 2; // string type
-                    break;
-                case "real":
-                    dtype = 1;
-                    break;
-                case "bool":
-                    dtype = 3;
-                    break;
-                case "int":
-                    dtype = 0;
-                    break;
-                default:
-                    Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
-                    throw new Exception("Unknown variable type");
-                    // break;
-            }
-
-            values = new int[0];
-            dstrid = Program.ModifyString(-1, entryname);
-            if (!TryAssign(estr))
-                throw new Exception(string.Format("Error assigning entry {0}", entryname));
-        }
-
-        public void ReadBytes(BinaryReader edata) {
-            // header
-            dtype = edata.ReadUInt16();
-            dcount = edata.ReadUInt16();
-            dstrid = edata.ReadInt32();
-            // read all entries
-            values = new int[dcount];
-            for (int i = 0; i < dcount; i++)
-            {
-                values[i] = edata.ReadInt32();
-            }
-        }
-
-        public void WriteBytes(BinaryWriter edata)
-        {
-            edata.Write(dtype);
-            edata.Write(dcount);
-            edata.Write(dstrid);
-            foreach (int v in values)
-              edata.Write(v);
-        }
-
-        public int AsInt(int eid)
-        {
-            return values[eid];
-        }
-
-        public float AsFloat(int eid)
-        {
-            return BitConverter.ToSingle(BitConverter.GetBytes(values[eid]), 0);
-        }
-
-        public string AsString(int eid, List<string> strtable) {
-            return strtable[values[eid]];
-        }
-
-        public bool TryAssign(string fromstr) {
-            string[] estrs = fromstr.Split(',');
-            // if (estrs.Length > 3 || estrs.Length == 1)
-            if (estrs.Length != 3)
-            {
-                Console.WriteLine("Malformed assignment string \"{0}\"", fromstr);
-                // Console.ReadKey(true);
-                return false;
-            }
-            string entryname = estrs[0];
-            // int entryid = StrSearchList[entryname];
-            if (StrTable[dstrid] != entryname)
-            {
-                Console.WriteLine("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, StrTable[dstrid]);
-                return false;
-            }
-            string[] strs = estrs[1].Split(';');            
-            
-            if (strs.Length != values.Length)
-            {
-                // Console.WriteLine("Array size mismatch: assigning {0} values to {1} array size", strs.Length, values.Length);
-                // TODO: All kinds of weirdiness with string packing, simplest solution would be ignoring string variable parsing altogether, but if we want to repack correctly we'll need this
-                if (dtype == 2) // If it is string it may be stored as single value, or may have sequence of empty fields which are condensed to a single entry with ;'s inside
-                {
-                    if (!isarray || values.Length == 1)
-                    {
-                        strs = new string[1] { estrs[1] };
-                    } else
-                    {
-                        // This is when it get's weird:
-                        // try compacting multiple empty strings to ;;
-                        List<string> cstrs = new List<string>();
-                        string accum = "";
-                        for (int i = 0; i < strs.Length; i++) // 
-                        {
-                            if (strs[i] == "") { 
-                                if (i + 1 < strs.Length && strs[i + 1] == "") accum += ";"; // Ignore last ; as it is a separator
-                            }
-                            else
-                            {
-                                if (accum != "")
-                                {
-                                    cstrs.Add(accum);
-                                    accum = "";
-                                }
-                                cstrs.Add(strs[i]);
-                            }
-                        }
-                        if (accum != "") cstrs.Add(accum);
-                        strs = cstrs.ToArray<string>();
-                    }
-                }                
-            }
-
-            // DEBUG: array size changing but not creating new record
-            //*
-            if (values.Length != 0 && strs.Length != values.Length)            {
-                Console.WriteLine("WARN: Array size mismatch: assigning {0} values to array of size {1}.\nSetting: {2} -> {3}", strs.Length, values.Length, this, fromstr);
-                // return false;
-            }//*/
-
-            float fval = (float)0.0;
-            int[] nvalues = new int[strs.Length];
-
-            bool strmodified = false;
-            for (int i = 0; i < strs.Length; i++) {
-                switch (dtype)
-                {
-                    case 0: // TODO: Move entry types to static Consts for clarity
-                        if (!int.TryParse(strs[i], out nvalues[i]))
-                        {
-                            Console.WriteLine("Error parsing integer value #{0}=\"{1}\"", i, strs[i]);
-                            return false;
-                        }
-                        break;
-                    case 1:
-                        if (!float.TryParse(strs[i], out fval))
-                        {
-                            Console.WriteLine("Error parsing float value #{0}=\"{1}\"", i, strs[i]);
-                            return false;
-                        }
-                        nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(fval), 0);
-                        break;
-                    case 2: // String
-                        if (i < values.Length)
-                            if (strs[i] != StrTable[values[i]])
-                            {
-                                string origstr = StrTable[values[i]];
-                                nvalues[i] = Program.ModifyString(values[i], strs[i]);
-                                // Console.WriteLine("Changing string \"{0}\" to \"{1}\", Index {2} -> {3}", origstr, strs[i], values[i], nvalues[i]); // DEBUG
-                                strmodified = true;
-                            }
-                            else
-                                nvalues[i] = values[i];
-                        else { // New string
-                            nvalues[i] = Program.ModifyString(-1, strs[i]);
-                            // Console.WriteLine("Adding string \"{0}\", Index {1}", strs[i], nvalues[i]); // DEBUG
-                        }
-                        break;
-                    case 3:
-                        if (!int.TryParse(strs[i], out nvalues[i]) || nvalues[i] > 1)
-                        {
-                            Console.WriteLine("Error parsing boolean value #{0}=\"{1}\"", i - 1, strs[i]);
-                            return false;
-                        }
-                        break;
-                    default:
-                        Console.WriteLine("Unknown data type in database"); // TODO: make more informative
-                        return false;
-                }
-            }
-            if (strmodified || values.Length != nvalues.Length || !values.SequenceEqual(nvalues))
-            {
-                values = nvalues;
-                this.dcount = (ushort)values.Length;
-                changed = true;
-            }
-            return true;
-        }
-
-        public override string ToString()
-        {
-            if (StrTable == null) return "";
-            StringBuilder sb = new StringBuilder();
-            sb.Append(StrTable[dstrid]).Append(',');
-            bool firstentry = true;
-            foreach (int value in values)
-            {
-                if (!firstentry) sb.Append(";");
-                switch (dtype)
-                {
-                    case 0:
-                    case 3:
-                    default:
-                        sb.Append(value); // values are signed!
-                        break;
-                    case 1:
-                        sb.AppendFormat("{0:0.000000}", BitConverter.ToSingle(BitConverter.GetBytes(value), 0));
-                        break;
-                    case 2:
-                        sb.Append(strtable[value]);
-                        // Console.Write(strtable[value]);
-                        break;
-                }
-                firstentry = false;
-            }
-            sb.Append(',');
-            return sb.ToString();
-        }
-    }
-
-    class ARZHeader {
-        public const int HEADER_SIZE = 24;
-        public ushort Unknown;
-        public ushort Version;
-        public uint RecordTableStart;
-        public uint RecordTableSize;
-        public uint RecordTableEntries;
-        public uint StringTableStart;
-        public uint StringTableSize;
-        public ARZHeader() {
-        }
-
-        public ARZHeader(BinaryReader bytes) {
-            ReadBytes(bytes);
-        }
-
-        public void ReadBytes(BinaryReader bytes) {
-            Unknown = bytes.ReadUInt16();
-            Version = bytes.ReadUInt16();
-            RecordTableStart = bytes.ReadUInt32();
-            RecordTableSize = bytes.ReadUInt32();
-            RecordTableEntries = bytes.ReadUInt32();
-            StringTableStart = bytes.ReadUInt32();
-            StringTableSize = bytes.ReadUInt32();
-        }
-    }
-
-    // Template Objects
-    public class TemplateNode {
-        public static readonly TemplateNode TemplateNameVar;
-        public string TemplateFile = null;
-        public TemplateNode parent = null;
-        public string kind = "";
-        public Dictionary<string, string> values = new Dictionary<string, string>();
-        public SortedDictionary<string, TemplateNode> varsearch = null;
-        public List<TemplateNode> subitems = new List<TemplateNode>();
-        public List<TemplateNode> includes = new List<TemplateNode>();
-
-        static TemplateNode()
-        {
-            TemplateNameVar = new TemplateNode();
-            TemplateNameVar.kind = "variable";
-            TemplateNameVar.values["name"] = "templateName";
-            TemplateNameVar.values["class"] = "variable";
-            TemplateNameVar.values["type"] = "string";
-        }
-
-        public TemplateNode(TemplateNode aparent = null, string aTemplateFile = null) {
-            parent = aparent;
-            TemplateFile = aTemplateFile;
-            if (aparent == null) // I am root
-                varsearch = new SortedDictionary<string, TemplateNode>();
-        }
-
-        public string GetTemplateFile()
-        {
-            if (!string.IsNullOrEmpty(TemplateFile))
-                return TemplateFile;
-            else 
-                if (parent != null) return parent.GetTemplateFile(); 
-                else return null;
-        }
-
-        public int ParseNode(string[] parsestrings, int parsestart = 0) {
-            int i = parsestart;
-            while (string.IsNullOrWhiteSpace(parsestrings[i])) i++;
-            kind = (parsestrings[i++].Trim().ToLower()); // Check for proper kind
-            while (parsestrings[i].Trim() != "{") i++; // Find Opening bracket
-            i++;
-            while (string.IsNullOrWhiteSpace(parsestrings[i])) i++;
-            while (parsestrings[i].Trim() != "}")
-            {
-                if (string.IsNullOrWhiteSpace(parsestrings[i])) { i++; continue; }
-                if (parsestrings[i].Trim().Contains('='))
-                { // This is entry value
-                    string[] sval = parsestrings[i].Split('=');
-                    string akey = (sval[0].Trim());
-                    string aval = (sval[1].Trim().Trim('"'));
-                    values[akey] = aval;
-                } else
-                { // subitem
-                    TemplateNode sub = new TemplateNode(this);
-                    i = sub.ParseNode(parsestrings, i);
-                    subitems.Add(sub);
-                }
-                i++;
-            }
-            return i;
-        }
-        
-        public List<TemplateNode> findValue(string aval) {
-            List<TemplateNode> res = new List<TemplateNode>();
-            if (values.ContainsValue(aval)) res.Add(this);
-            foreach (TemplateNode sub in subitems)
-            {
-                res.AddRange(sub.findValue(aval));
-            }
-            return res;
-        }
-
-        public TemplateNode FindVariable(string aname) {
-            if (parent == null && varsearch.ContainsKey(aname))
-            {
-                return varsearch[aname];
-            }
-
-            if (kind == "variable" && values.ContainsKey("name") && values["name"] == aname)
-            {
-                if (parent == null) varsearch.Add(aname, this);
-                return this;
-            }
-            // Not this, recurse subitems:
-            TemplateNode res = null;
-            foreach (TemplateNode sub in subitems) {
-                res = sub.FindVariable(aname);
-                if (res != null)
-                {
-                    if (parent == null) varsearch.Add(aname, res);
-                    return res;
-                }
-            }
-            // No entry in subitems, check includes
-            foreach (TemplateNode incl in includes)
-            {
-                res = incl.FindVariable(aname);
-                if (res != null)
-                {
-                    if (parent == null) varsearch.Add(aname, res);
-                    return res;
-                }
-            }
-            // Giving up:
-            return null;
-        }
-
-        public void FillIncludes(Dictionary<string, TemplateNode> alltempl) {
-            foreach (TemplateNode sub in subitems)
-            {
-                if (sub.kind == "variable" && sub.values.ContainsKey("type") && sub.values["type"] == "include")
-                {
-                    string incstr = sub.values.ContainsKey("value") ? sub.values["value"] : "";
-                    if (incstr == "")
-                        incstr = sub.values.ContainsKey("defaultValue") ? sub.values["defaultValue"] : "";
-                    incstr = incstr.ToLower().Replace("%template_dir%", "").Replace(Path.DirectorySeparatorChar, '/');
-                    if (incstr.StartsWith("/")) incstr = incstr.Substring(1);
-                    if (alltempl.ContainsKey(incstr))
-                    {
-                        // Console.WriteLine("Include {0}", incstr);
-                        // Check for cycles
-                        TemplateNode itemplate = alltempl[incstr];
-                        if (itemplate == this || includes.Contains(itemplate))
-                            Console.WriteLine("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
-                        includes.Add(itemplate);
-                    } else
-                    {
-                        TemplateNode tproot = this;
-                        while (tproot.parent != null) tproot = tproot.parent;
-                        string intemplate = alltempl.First(t => t.Value == tproot).Key;
-                        Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate);
-                    }
-                }
-                else if (sub.kind == "group") {
-                    sub.FillIncludes(alltempl);
-                }
-            }
-        }
     }
 
 }
