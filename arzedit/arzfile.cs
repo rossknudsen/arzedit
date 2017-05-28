@@ -45,7 +45,9 @@ namespace arzedit {
         }
 
         public void WriteFromLines(string recordname, string[] lines)
-        {           
+        {
+            // if (recordname.Contains(@"petskill_demo_attack.dbr"))
+               // Console.WriteLine("BUG:");
             ARZRecord nrec = new ARZRecord(recordname, lines, ftemplates, strtable);
             WriteRecord(nrec);
         }
@@ -184,15 +186,12 @@ namespace arzedit {
                 while (pos < size)
                 {
                     int count = br.ReadInt32(); pos += 4; // Read Count
-                                                          // DEBUG:
-                                                          // Console.WriteLine("Block at pos: {0}; Count: {1}", pos, count);
+                    // Program.Log.Trace("Block at pos: {0}; Count: {1}", pos, count);
                     strtable.Capacity += count;
                     for (int i = 0; i < count; i++)
                     {
                         int length = br.ReadInt32(); pos += 4;
-                        // Console.Write("String at pos: {0}; Length: {1}; ", pos, length);
                         strtable.Add(new string(br.ReadChars(length))); pos += length;
-                        // Console.WriteLine("Value = \"{0}\"", str);
                     }
                 }
             }
@@ -262,7 +261,9 @@ namespace arzedit {
         public byte[] aData;
         public List<ARZEntry> entries = null;
         public ARZStrings strtable = null;
+        private HashSet<string> entryset = null;
         public string Name { get { return strtable?[rfid]; } }
+
         private static ARZEntryComparer NameComparer = new ARZEntryComparer();
    
         
@@ -273,58 +274,116 @@ namespace arzedit {
             rtype = ""; // TODO: IMPORTANT: How record type is determined, last piece of info
             rdFileTime = DateTime.Now; // TODO: Correct file time should be passed here somehow
             entries = new List<ARZEntry>();
+            entryset = new HashSet<string>();
             TemplateNode tpl = null;
+            foreach (string line in rstrings) {
+                if (line.StartsWith("templateName"))
+                {
+                    string[] eexpl = line.Split(',');
+                    try
+                    {
+                        tpl = templates[eexpl[1]];
+                        ARZEntry newentry = new ARZEntry(eexpl[0], TemplateNode.TemplateNameVar, rname, this);
+                        if (newentry.TryAssign(eexpl[0], eexpl[1], strtable, ""))
+                        {
+                            entries.Add(newentry);
+                            entryset.Add(eexpl[0]);
+                        }
+                    }
+                    catch (KeyNotFoundException e)
+                    {
+                        // Console.WriteLine("Template file \"{0}\" used by record {1} not found!", eexpl[1], rname);
+                        Program.Log.Error("Template file \"{0}\" used by record {1} not found!", eexpl[1], rname);
+                        throw e;
+                    }
+                    break;
+                }
+            }
+            if (tpl == null)
+            {
+                Program.Log.Error("Record {0} has no template!", rname); // DEBUG
+                throw new Exception(string.Format("Record {0} has no template!", rname));
+            }
             foreach (string estr in rstrings)
             {
                 TemplateNode vart = null;
                 string[] eexpl = estr.Split(',');
-                string varname = eexpl[0];
-                if (eexpl.Length < 2)
+                if (eexpl.Length != 3)
                 {
-                    Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", Name, estr);
+                    // Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", Name, estr);
+                    if (eexpl.Length == 2)
+                        Program.Log.Warn("Record \"{0}\" - Malformed assignment string \"{1}\", No comma at the end, Recoverable.", Name, estr); // DEBUG:
+                    else
+                    {
+                        Program.Log.Warn("Record \"{0}\" - Malformed assignment string \"{1}\", Skipping", Name, estr);
+                        continue;
+                    }
+                }
+                string varname = eexpl[0];
+                string vvalue = eexpl[1];
+                string defaultsto = "";
+                if (string.IsNullOrEmpty(varname))
+                {
+                    Program.Log.Warn("Record \"{0}\" - Has empty entry name, Skipping", Name);
                     continue;
                 }
-                string vvalue = eexpl[1];
                 if (varname == "templateName")
                 {
-                    try
-                    {
-                        tpl = templates[vvalue];
-                        vart = TemplateNode.TemplateNameVar;
-                    }
-                    catch (KeyNotFoundException e)
-                    {
-                        Console.WriteLine("Template file \"{0}\" used by record {1} not found!", vvalue, rname);
-                        throw e;
-                    }
+                    continue; // templateName should have been assigned already
                 }
                 else
                 {
                     // Find variable in templates
-                    if (tpl != null) // Find variable
-                        vart = tpl.FindVariable(varname);
-                }
-                if (varname.ToLower() == "class") rtype = vvalue;
+                    // TODO: All this is rubbish, introduces ambiguity, find root cause, not hack & tack
+                    /*
+                    if (!notfoundvars.Contains(varname)) // Find variable template (if not already searched for and not found) 
+                    {
+                        vart = tpl?.FindVariable(varname);
+                        if (vart == null) { // Includes has given up, search whole template database
+                            Program.Log.Debug("Entry {0}/{1} template not found in includes, looking up globally.", rname, varname);
+                            foreach (TemplateNode otpl in templates.Values) {                                
+                                if ((vart = otpl.FindVariable(varname)) != null)
+                                    break;
+                            }
+                        }
+                    }*/
+                    vart = tpl.FindVariable(varname); 
+                    if (vart != null)
+                    {
+                        if (vart.values.ContainsKey("defaultValue"))
+                            defaultsto = vart.values["defaultValue"];
+                        if (entryset.Contains(varname))
+                        {
+                            // Console.WriteLine("Record {0} duplicate entry {1} - Overwriting.", rname, varname); // TODO: Do not ignore, Overwrite
+                            Program.Log.Info("Record {0} duplicate entry {1} - Overwriting.", rname, varname);
+                            ARZEntry entry = entries.Find(e => e.Name == varname);
+                            entry.TryAssign(varname, vvalue, strtable, defaultsto);
+                            continue;
+                        }
+                        else
+                        {
 
-                if (vart == null)
-                {
-                    // DEBUG:
-                    // Console.WriteLine("Record \"{1}\" Varia1ble \"{0}\" not found in any included templates.", varname, rname);
-                }
-                else
-                {
-                    string defaultsto = "";
-
-                    if (vart.values.ContainsKey("defaultValue"))
-                        defaultsto = vart.values["defaultValue"];
-
-                    ARZEntry newentry = new ARZEntry(estr, vart, rname, this);
-                    if (newentry.NewAssign(estr, strtable, defaultsto)) {
-                        entries.Add(newentry);
+                            if (varname.ToLower() == "class") rtype = vvalue;
+                            // DEBUG:
+                            // if (rname.EndsWith("caravan_backgroundimage.dbr") && varname == "FileDescription" && eexpl[1].StartsWith("BitmapSingle"))
+                            // Console.WriteLine("Error here...");
+                            ARZEntry newentry = new ARZEntry(varname, vart, rname, this);
+                            if (newentry.TryAssign(varname, vvalue, strtable, defaultsto))
+                            {
+                                entries.Add(newentry);
+                                entryset.Add(varname);
+                            }
+                        }
+                    }
+                    else {
+                        // Console.WriteLine("Entry {0} in {1} has no template.", varname, rname);
+                        Program.Log.Debug("Entry {0}/{1} template not found. Skipping.", rname, varname);
+                        // notfoundvars.Add(varname);
                     }
                 }
+                    
             }
-            entries.Sort(1, entries.Count - 1, NameComparer);
+            entries.Sort(1, entries.Count - 1, NameComparer); // Sort all except first "templateName" entry
             PackData();
         }
 
@@ -428,7 +487,8 @@ namespace arzedit {
                     string estring = etr.ToString();
                     if (estring.Contains('\n') || estring.Contains(Environment.NewLine))
                     {
-                        Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
+                        // Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
+                        Program.Log.Info("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
                         estring = System.Text.RegularExpressions.Regex.Replace(estring, @"\r\n?|\n", "");
                     }
                     sr.WriteLine(estring);
@@ -462,9 +522,17 @@ namespace arzedit {
 
     public class ARZEntryComparer : IComparer<ARZEntry>
     {
-        public int Compare(ARZEntry first, ARZEntry second)
+        public int Compare(ARZEntry first, ARZEntry second) 
         {
-            return String.CompareOrdinal(first.Name, second.Name);
+            /*
+            if (first.Name == "templateName" || second.Name == "templateName") // Pop templateName to the top, ugly hack
+                if (first.Name == second.Name)
+                    return 0;
+                else
+                    return first.Name == "templateName" ? -1 : 1;
+            else
+            */
+              return String.CompareOrdinal(first.Name, second.Name);
         }
     }
 
@@ -477,6 +545,7 @@ namespace arzedit {
         public int[] values;
         public bool changed = false; // TODO: overhead
         public bool isarray = false;
+        public bool lowercase = false;
         private ARZRecord parent = null;
         // private ARZStrings strtable = null;
         // static SortedList<string, int> strsearchlist = null;
@@ -503,11 +572,10 @@ namespace arzedit {
             ReadBytes(edata);
         }
 
-        public ARZEntry(string estr, TemplateNode tpl, string recname, ARZRecord aparent)
+        public ARZEntry(string entryname, TemplateNode tpl, string recname, ARZRecord aparent)
         {
             string vtype = null;
             parent = aparent;
-            string entryname = estr.Split(',')[0];            
 
             try
             {
@@ -515,17 +583,17 @@ namespace arzedit {
             }
             catch (KeyNotFoundException e)
             {
-                Console.WriteLine("ERROR: Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
+                // Console.WriteLine("ERROR: Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
+                Program.Log.Error("Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
                 throw e; // rethrow
             }
-
-
 
             isarray = tpl.values.ContainsKey("class") && tpl.values["class"] == "array"; // This is an array act accordingly when packing strings
                         
             if (vtype.StartsWith("file_"))
             {
                 vtype = "string"; // Make it string
+                lowercase = true;
             }
 
             switch (vtype)
@@ -553,7 +621,8 @@ namespace arzedit {
                     dtype = ARZEntryType.Int;
                     break;
                 default:
-                    Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
+                    // Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
+                    Program.Log.Error("Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
                     throw new Exception("Unknown variable type");
                     // break;
             }
@@ -610,39 +679,92 @@ namespace arzedit {
             return strtable[values[eid]];
         }
 
-        public bool NewAssign(string fromstr, ARZStrings strtable, string defaultsto = "") {
-            string[] estrs = fromstr.Split(',');
-            // if (estrs.Length > 3 || estrs.Length == 1)
-            if (estrs.Length != 3)
-            {
+        public bool TryAssign(string entryname, string valuestr, ARZStrings strtable, string defaultsto = "") {
+            // This is artifact of old assign function:
+            /* string[] estrs = fromstr.Split(',');
+             if (estrs.Length > 3 || estrs.Length == 1)
+             if (estrs.Length != 3)
+             {
                 Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", parent.Name, fromstr);
                 // Console.ReadKey(true);
                 return false;
             }
             string entryname = estrs[0];
+            */
             // int entryid = StrSearchList[entryname];
             if (strtable[dstrid] != entryname)
             {
-                Console.WriteLine("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
+                // Console.WriteLine("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
+                Program.Log.Warn("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
                 return false;
             }
-            if (string.IsNullOrWhiteSpace(estrs[1]))
+            if (string.IsNullOrWhiteSpace(valuestr))
             {
-                estrs[1] = defaultsto;
-                // Console.WriteLine("{0} Defaults To {1}", entryname, estrs[1]);
+                valuestr = defaultsto;
+                // Console.WriteLine("{0} Defaults To {1}", entryname, estrs[1]);                
                 // TODO: Ignore right now, may be implement defaulting later
                 return false;
             }
 
-            string[] strs = estrs[1].Split(';');
+            if (lowercase) valuestr = valuestr.ToLower();
+
+            /* Not sure how to behave in this situation, trim all trailing or just put
+            if (dtype != ARZEntryType.String && isarray) // Ignore last array element entry if has trailing ;
+                valuestr = valuestr.TrimEnd(';');
+            */
+            string[] strs = valuestr.Split(';');
+            if (!isarray )
+            {
+                if (strs.Length > 1)
+                {
+                    if (dtype == ARZEntryType.String)
+                    {
+                        strs = new string[1] { valuestr };
+                    }
+                    else
+                    {
+                        strs = new string[1] { strs[0] };
+                    }
+                }
+            }
+            else if (valuestr.Contains(";;"))
+            {
+                // This is when it get's weird:
+                // try compacting multiple empty strings to ;;                
+                List<string> cstrs = new List<string>();
+                string accum = "";
+                for (int i = 0; i < strs.Length; i++) // 
+                {
+                    if (strs[i] == "")
+                    {
+                        if (i + 1 < strs.Length && strs[i + 1] == "") accum += ";"; // Ignore last ; as it is a separator
+                    }
+                    else
+                    {
+                        if (accum != "")
+                        {
+                            // if (dtype != ARZEntryType.Real)
+                            cstrs.Add(accum);
+                            accum = "";
+                        }
+                        //if (dtype == ARZEntryType.Real && !string.IsNullOrWhiteSpace(strs[i]))
+                        cstrs.Add(strs[i]);
+                    }
+                }
+                // if (accum != "" && dtype != ARZEntryType.Real)
+                if (accum != "")
+                        cstrs.Add(accum);
+                strs = cstrs.ToArray<string>();
+            }
 
             // Console.WriteLine("Array size mismatch: assigning {0} values to {1} array size", strs.Length, values.Length);
             // TODO: All kinds of weirdiness with string packing, simplest solution would be ignoring string variable parsing altogether, but if we want to repack correctly we'll need this
+            /*
             if (dtype == ARZEntryType.String) // If it is string it may be stored as single value, or may have sequence of empty fields which are condensed to a single entry with ;'s inside
             {
                 if (!isarray)
                 {
-                    strs = new string[1] { estrs[1] };
+                    strs = new string[1] { valuestr };
                 }
                 else
                 {
@@ -670,6 +792,13 @@ namespace arzedit {
                     strs = cstrs.ToArray<string>();
                 }
             }
+            else { // Non string
+                if (!isarray && strs.Length > 1) {
+                    Program.Log.Debug("Record {0} value {1} Assigning array {2} to non array: ", parent.Name, entryname, valuestr);
+                    strs = new string[1] { strs[0] }; // Not array, but string is array - get only first value                    
+                }
+            }
+            */
 
             float fval = (float)0.0;
             int[] nvalues = new int[strs.Length];
@@ -681,6 +810,12 @@ namespace arzedit {
                     case ARZEntryType.Int: // TODO: Move entry types to static Consts for clarity
                         if (!int.TryParse(strs[i], out nvalues[i]))
                         {
+                            if (float.TryParse(strs[i], out fval))
+                            {
+                                nvalues[i] = (int)fval;
+                                // Console.WriteLine("Int value represented as float {0} in {1}, truncating", fval, parent.Name); // DEBUG
+                                Program.Log.Debug("Int value represented as float \"{0:F}\" in {1}/{2}, truncating", fval, parent.Name, entryname);
+                            } else
                             if (strs[i].StartsWith("0x"))
                             {
                                 try
@@ -690,6 +825,8 @@ namespace arzedit {
                                 catch
                                 {
                                     // Console.WriteLine("Could not parse Hex number {0}", strs[i]); // DEBUG
+                                    Program.Log.Debug("Could not parse Hex number \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
+                                    nvalues[i] = 0;
                                 }
                             }
                             else
@@ -697,6 +834,7 @@ namespace arzedit {
                                 // DEBUG:
                                 // Console.WriteLine("Record {3} Entry {0} Error parsing integer value #{1}=\"{2}\", Defaulting to 0", Name, i, strs[i], parent.Name);
                                 // return false;
+                                Program.Log.Debug("Error parsing integer value \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
                                 nvalues[i] = 0; // Set default
                             }
                         }
@@ -706,6 +844,7 @@ namespace arzedit {
                         {
                             // Console.WriteLine("Error parsing float value #{0}=\"{1}\", Defaulting to 0.0", i, strs[i]); // DEBUG
                             // return false;
+                            Program.Log.Debug("Error parsing float value \"{0}\" in {1}/{2}, Defaulting to 0.0", strs[i], parent.Name, entryname);
                             nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(0.0), 0);
                         }
                         nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(fval), 0);
@@ -719,12 +858,14 @@ namespace arzedit {
                         if (!int.TryParse(strs[i], out nvalues[i]) || nvalues[i] > 1)
                         {
                             // Console.WriteLine("Error parsing boolean value #{0}=\"{1}\", Defaulting to False", i, strs[i]); // DEBUG
+                            Program.Log.Debug("Error parsing boolean value \"{0}\" in {1}/{2}, Defaulting to False", strs[i], parent.Name, entryname);
                             nvalues[i] = 0;
                             // return false;
                         }
                         break;
                     default:
-                        Console.WriteLine("Unknown data type in database"); // TODO: make more informative
+                        // Console.WriteLine("Unknown data type in database"); // TODO: make more informative
+                        Program.Log.Warn("Unknown data for entry {0}/{1}", parent.Name, entryname);
                         return false;
                 }
             }
@@ -734,7 +875,7 @@ namespace arzedit {
             return true;
         }
 
-        public bool TryAssign(string fromstr)
+        public bool OldTryAssign(string fromstr)
         {
             throw new NotImplementedException();
 
@@ -883,7 +1024,6 @@ namespace arzedit {
                         break;
                     case ARZEntryType.String:
                         sb.Append(StrTable[value]);
-                        // Console.Write(strtable[value]);
                         break;
                 }
                 firstentry = false;

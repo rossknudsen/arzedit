@@ -55,8 +55,8 @@ namespace arzedit
     public class AssetDataMsh : AssetDataGeneric
     {
         public string miffile = null;
-        bool TangentSpaceVectors = false;
-        bool VertexColors = false;
+        public bool TangentSpaceVectors = false;
+        public bool VertexColors = false;
 
         public override void ReadBytes(BinaryReader br)
         {
@@ -199,6 +199,7 @@ namespace arzedit
             TextureCompilerP.StartInfo.FileName = Path.Combine(toolfolder, "TextureCompiler.exe");
             TextureCompilerP.StartInfo.Arguments = arguments;
             // Console.WriteLine(TextureCompilerP.StartInfo.Arguments);
+            Program.Log.Debug("Call: TextureCompiler.exe {0}", TextureCompilerP.StartInfo.Arguments);
             TextureCompilerP.StartInfo.UseShellExecute = false;
             TextureCompilerP.StartInfo.RedirectStandardOutput = true;
             TextureCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -207,6 +208,20 @@ namespace arzedit
             string output = TextureCompilerP.StandardOutput.ReadToEnd(); //The output result
             TextureCompilerP.WaitForExit();
             return output;
+        }
+
+        public void ExtractMDL(string infile, string outfile)
+        {
+            byte[] buffer = File.ReadAllBytes(infile);
+            byte[] headerMagic = Encoding.ASCII.GetBytes(new char[4] { 'M', 'D', 'L', (char)0x07 });
+            byte[] endString = Encoding.ASCII.GetBytes("ExportDataMDL");
+            int headerOffset = BoyerMoore.indexOf(buffer, headerMagic);
+            int endOffset = BoyerMoore.indexOf(buffer, endString);
+            // Console.WriteLine("Header = 0x{0:X}, Footer = 0x{1:X}, Out: {2}", headerOffset, endOffset, outfile);
+            using (FileStream ofs = new FileStream(outfile, FileMode.Create))
+            {
+                ofs.Write(buffer, headerOffset, endOffset - headerOffset);
+            }
         }
 
         public void CompileAsset(string srcfolder, string resfolder)
@@ -227,6 +242,7 @@ namespace arzedit
                 MapCompilerP.StartInfo.FileName = Path.Combine(toolfolder, "MapCompiler.exe");
                 MapCompilerP.StartInfo.Arguments = string.Format("\"{0}\" \"{1}\" \"{2}\"", srcm, srcfm, tgtm);
                 // Console.WriteLine(MapCompilerP.StartInfo.Arguments);
+                Program.Log.Debug("Call: MapCompiler.exe {0}", MapCompilerP.StartInfo.Arguments);
                 MapCompilerP.StartInfo.UseShellExecute = false;
                 MapCompilerP.StartInfo.RedirectStandardOutput = true;
                 MapCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -241,21 +257,21 @@ namespace arzedit
             else if (Type == AssetType.Bitmap)
             {
                 // Console.WriteLine("Compiling Bitmap {0} to {1}", data.srcfile, tgtm);
-                string output = CompileTexture(string.Format("{0} {1} -nopoweroftwo -nomipmaps", srcm, tgtm));
+                string output = CompileTexture(string.Format("\"{0}\" \"{1}\" -nopoweroftwo -nomipmaps", srcm, tgtm));
                 // Console.WriteLine(output);
             }
             else if (Type == AssetType.Texture)
             {
                 AssetDataTex tex = data as AssetDataTex;
                 // Console.WriteLine("Texture {0}, Type: {1}, Mipmaps={2}, ConvertToNormalMap={3}", tex.srcfile, tex.FormatStr(), tex.CreateMipmaps, tex.ConvertToNormalMap);
-                StringBuilder args = new StringBuilder(string.Format("\"{0}\" \"{1}\"", srcm, tgtm));
+                StringBuilder args = new StringBuilder(string.Format("\"{0}\" \"{1}\" -nopoweroftwo", srcm, tgtm));
                 if (tex.Format != TexFormat.Uncompressed)
                     args.AppendFormat(" -format {0}", tex.FormatStr());
                 if (tex.ConvertToNormalMap)
                     args.Append(" -normalmap");
                 if (!tex.CreateMipmaps)
                     args.Append(" -nomipmaps");
-                if (tex.FPS > 0)
+                if (tex.FPS > 0 && tex.FPS != 20)
                     args.AppendFormat(" -fps {0}", tex.FPS);
                 string output = CompileTexture(args.ToString());
                 // Console.WriteLine("Output:\n{0}", output); // Debug
@@ -263,7 +279,38 @@ namespace arzedit
             else if (Type == AssetType.Mesh)
             {
                 AssetDataMsh msh = data as AssetDataMsh;
-                Console.WriteLine("Cannot compile mesh \"{0}\", please build it in AssetManager.", resname);
+                string miffile = Path.Combine(srcfolder, msh.miffile).Replace(Path.DirectorySeparatorChar, '/');
+                string tempfile = Path.Combine(Path.GetTempPath(), string.Format("temp-{0}.mdl", Path.GetFileNameWithoutExtension(src)));
+                string basefolder = Path.GetFullPath(Path.Combine(srcfolder, ".."));
+                // Console.WriteLine("Compiling model \"{0}\"", resname);
+                ExtractMDL(src, tempfile);
+                Process ModelCompilerP = new Process();
+                ModelCompilerP.StartInfo.FileName = Path.Combine(toolfolder, "ModelCompiler.exe");
+                string addFlags = "";
+                if (msh.TangentSpaceVectors)
+                    addFlags += " -tangents";
+                if (msh.VertexColors)
+                    addFlags += " -vertexColors";
+                string srcfoldermod = srcfolder.TrimEnd(Path.DirectorySeparatorChar);
+                string mifparam = "";
+                if (Path.DirectorySeparatorChar == '\\')
+                    srcfoldermod += @"\\";
+                else
+                    srcfoldermod += Path.DirectorySeparatorChar;
+                if (!string.IsNullOrWhiteSpace(msh.miffile))
+                    mifparam = string.Format(" -mif \"{0}\" \"{1}\"", msh.miffile, srcfoldermod);
+                // ModelCompilerP.StartInfo.Arguments = string.Format("\"{0}\" {1} -mif \"{2}\" \"{3}\" \"{4}\"", tempfile.Replace(Path.DirectorySeparatorChar, '/'), addFlags, msh.miffile, srcfoldermod, tgtm);
+                ModelCompilerP.StartInfo.Arguments = string.Format("\"{0}\"{1}{2} \"{3}\"", tempfile.Replace(Path.DirectorySeparatorChar, '/'), addFlags, mifparam, tgtm);
+                Program.Log.Debug("Call: ModelCompiler.exe {0}", ModelCompilerP.StartInfo.Arguments); // DEBUG:
+                ModelCompilerP.StartInfo.UseShellExecute = false;
+                ModelCompilerP.StartInfo.RedirectStandardOutput = true;
+                ModelCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+                ModelCompilerP.StartInfo.CreateNoWindow = true; //not diplay a windows
+                ModelCompilerP.Start();
+                string output = ModelCompilerP.StandardOutput.ReadToEnd(); //The output result
+                // Console.WriteLine("Output:\n{0}", output); // DEBUG:
+                ModelCompilerP.WaitForExit();
+                File.Delete(tempfile);
             }
             // Direct copy assets:
             else if (Type == AssetType.Generic || Type == AssetType.Text || Type == AssetType.Quest || Type == AssetType.Wave || Type == AssetType.Ogg || Type == AssetType.ParticleFX)
@@ -276,14 +323,15 @@ namespace arzedit
             }
             else if (Type == AssetType.Unknown)
             {
-                Console.WriteLine("Cannot read asset {0}, unknown type \"{1}\" or not implemented. Please use AssetManager.", this.resname, new string(TypeMagick));
+                Program.Log.Warn("Cannot read asset {0}, unknown type \"{1}\" or not implemented. Please use AssetManager.", this.resname, new string(TypeMagick));
             }
             else
             {
-                Console.WriteLine("Asset \"{0}\" of type {1} slipped through build sieve.", resname, new string(TypeMagick));
+                Program.Log.Debug("Asset \"{0}\" of type {1} slipped through build sieve.", resname, new string(TypeMagick));
             }
         }
     }
+
 
 
 }

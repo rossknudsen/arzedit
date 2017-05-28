@@ -104,7 +104,7 @@ namespace arzedit
         {
             if (smem == null)
             {
-                Console.WriteLine("Trying to read uninitialized stringtable!");
+                Program.Log.Warn("ARCStringTable => GetStringAt: Trying to read uninitialized stringtable!");
                 return "";
             }
             
@@ -461,7 +461,6 @@ namespace arzedit
                 CopyBytes(aentry.CompressedSize, fstream, tostream);
             } else
             {
-                // Console.WriteLine("File is packed!"); // DEBUG
                 for (int p = 0; p < aentry.FileParts; p++) {
                     ARCFilePart cpart = parts[aentry.FirstPartIndex + p];
                     byte[] cbuff = new byte[cpart.CompressedSize];
@@ -475,7 +474,6 @@ namespace arzedit
                     {
                         tostream.Write(cbuff, 0, cpart.DecompressedSize);
                     }
-                    // byte[] dbuff = new byte[cpart.DecompressedSize];
                 }
                         
             }
@@ -549,46 +547,6 @@ namespace arzedit
                 readSoFar += readNow;
             } while (readSoFar < bytesRequired);
             return readSoFar;
-        }
-    }
-
-    // Util:
-    public class Adler32 // Make this non static
-    {
-        public uint checksum = 1;
-
-        public Adler32(uint initchecksum = 1)
-        {
-            checksum = initchecksum;
-        }
-
-        /// <summary>Performs the hash algorithm on given data array.</summary>
-        /// <param name="bytesArray">Input data.</param>
-        /// <param name="byteStart">The position to begin reading from.</param>
-        /// <param name="bytesToRead">How many bytes in the bytesArray to read.</param>
-        public uint ComputeHash(byte[] bytesArray, int byteStart, int bytesToRead)
-        {
-            int n;
-            uint s1 = checksum & 0xFFFF;
-            uint s2 = checksum >> 16;
-
-            while (bytesToRead > 0)
-            {
-                n = (3800 > bytesToRead) ? bytesToRead : 3800;
-                bytesToRead -= n;
-
-                while (--n >= 0)
-                {
-                    s1 = s1 + (uint)(bytesArray[byteStart++] & 0xFF);
-                    s2 = s2 + s1;
-                }
-
-                s1 %= 65521;
-                s2 %= 65521;
-            }
-
-            checksum = (s2 << 16) | s1;
-            return checksum;
         }
     }
 }
