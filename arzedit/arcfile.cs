@@ -7,6 +7,7 @@ using LZ4;
 
 namespace arzedit
 {
+    // Classes for reading and writing ARC files
 
     public class ARCHeader
     {

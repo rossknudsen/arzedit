@@ -3,7 +3,7 @@ using System.Text;
 using System.Threading;
 
 /// <summary>
-/// An ASCII progress bar
+/// An ASCII progress bar (Shameles Rip off StackExchange)
 /// </summary>
 public class ProgressBar : IDisposable, IProgress<double> {
 	private const int blockCount = 10;

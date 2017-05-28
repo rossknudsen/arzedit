@@ -2,7 +2,9 @@
 
 namespace arzedit
 {
-    class BoyerMoore
+    // Utility classes
+
+    class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "char"
     {
         // Shameless Rip, source - Wikipedia :D
         const int ALPHABET_SIZE = 0xFF + 1;
@@ -108,9 +110,9 @@ namespace arzedit
         }
     }
 
-    // Another shameless Rip, Source - somebody's blog:
-    public class Adler32
+    public class Adler32 // Adler32 checksum calculator class
     {
+        // Another shameless Rip, Source - somebody's blog:
         public uint checksum = 1;
 
         public Adler32(uint initchecksum = 1)

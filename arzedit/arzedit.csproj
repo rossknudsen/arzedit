@@ -71,6 +71,7 @@
     <Compile Include="arcfile.cs" />
     <Compile Include="arzfile.cs" />
     <Compile Include="assetfile.cs" />
+    <Compile Include="commandlineopts.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ProgressBar.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

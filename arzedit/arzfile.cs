@@ -7,6 +7,7 @@ using LZ4;
 using System.Text;
 
 namespace arzedit {
+    // Classes responsible for Reading/Writing arz database, and database objects themselves
 
     public class ARZWriter
     {
@@ -708,7 +709,8 @@ namespace arzedit {
 
             if (lowercase) valuestr = valuestr.ToLower();
 
-            /* Not sure how to behave in this situation, trim all trailing or just put
+            /* Not sure how to behave in this situation, trim all trailing ???, 
+             * most compatible seems to be packing ; together to one variable and let parsing fail/default.
             if (dtype != ARZEntryType.String && isarray) // Ignore last array element entry if has trailing ;
                 valuestr = valuestr.TrimEnd(';');
             */
@@ -756,49 +758,6 @@ namespace arzedit {
                         cstrs.Add(accum);
                 strs = cstrs.ToArray<string>();
             }
-
-            // Console.WriteLine("Array size mismatch: assigning {0} values to {1} array size", strs.Length, values.Length);
-            // TODO: All kinds of weirdiness with string packing, simplest solution would be ignoring string variable parsing altogether, but if we want to repack correctly we'll need this
-            /*
-            if (dtype == ARZEntryType.String) // If it is string it may be stored as single value, or may have sequence of empty fields which are condensed to a single entry with ;'s inside
-            {
-                if (!isarray)
-                {
-                    strs = new string[1] { valuestr };
-                }
-                else
-                {
-                    // This is when it get's weird:
-                    // try compacting multiple empty strings to ;;
-                    List<string> cstrs = new List<string>();
-                    string accum = "";
-                    for (int i = 0; i < strs.Length; i++) // 
-                    {
-                        if (strs[i] == "")
-                        {
-                            if (i + 1 < strs.Length && strs[i + 1] == "") accum += ";"; // Ignore last ; as it is a separator
-                        }
-                        else
-                        {
-                            if (accum != "")
-                            {
-                                cstrs.Add(accum);
-                                accum = "";
-                            }
-                            cstrs.Add(strs[i]);
-                        }
-                    }
-                    if (accum != "") cstrs.Add(accum);
-                    strs = cstrs.ToArray<string>();
-                }
-            }
-            else { // Non string
-                if (!isarray && strs.Length > 1) {
-                    Program.Log.Debug("Record {0} value {1} Assigning array {2} to non array: ", parent.Name, entryname, valuestr);
-                    strs = new string[1] { strs[0] }; // Not array, but string is array - get only first value                    
-                }
-            }
-            */
 
             float fval = (float)0.0;
             int[] nvalues = new int[strs.Length];
@@ -865,141 +824,13 @@ namespace arzedit {
                         break;
                     default:
                         // Console.WriteLine("Unknown data type in database"); // TODO: make more informative
-                        Program.Log.Warn("Unknown data for entry {0}/{1}", parent.Name, entryname);
+                        Program.Log.Warn("Unknown data type {2} for entry {0}/{1}", parent.Name, entryname, dtype);
                         return false;
                 }
             }
             values = nvalues;
             dcount = (ushort)values.Length;
             changed = true;
-            return true;
-        }
-
-        public bool OldTryAssign(string fromstr)
-        {
-            throw new NotImplementedException();
-
-            string[] estrs = fromstr.Split(',');
-            // if (estrs.Length > 3 || estrs.Length == 1)
-            if (estrs.Length != 3)
-            {
-                Console.WriteLine("Malformed assignment string \"{0}\"", fromstr);
-                // Console.ReadKey(true);
-                return false;
-            }
-            string entryname = estrs[0];
-            // int entryid = StrSearchList[entryname];
-            if (StrTable[dstrid] != entryname)
-            {
-                Console.WriteLine("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, StrTable[dstrid]);
-                return false;
-            }
-            string[] strs = estrs[1].Split(';');
-
-            if (strs.Length != values.Length)
-            {
-                // Console.WriteLine("Array size mismatch: assigning {0} values to {1} array size", strs.Length, values.Length);
-                // TODO: All kinds of weirdiness with string packing, simplest solution would be ignoring string variable parsing altogether, but if we want to repack correctly we'll need this
-                if (dtype == ARZEntryType.String) // If it is string it may be stored as single value, or may have sequence of empty fields which are condensed to a single entry with ;'s inside
-                {
-                    if (!isarray || values.Length == 1)
-                    {
-                        strs = new string[1] { estrs[1] };
-                    }
-                    else
-                    {
-                        // This is when it get's weird:
-                        // try compacting multiple empty strings to ;;
-                        List<string> cstrs = new List<string>();
-                        string accum = "";
-                        for (int i = 0; i < strs.Length; i++) // 
-                        {
-                            if (strs[i] == "")
-                            {
-                                if (i + 1 < strs.Length && strs[i + 1] == "") accum += ";"; // Ignore last ; as it is a separator
-                            }
-                            else
-                            {
-                                if (accum != "")
-                                {
-                                    cstrs.Add(accum);
-                                    accum = "";
-                                }
-                                cstrs.Add(strs[i]);
-                            }
-                        }
-                        if (accum != "") cstrs.Add(accum);
-                        strs = cstrs.ToArray<string>();
-                    }
-                }
-            }
-
-            // DEBUG: array size changing but not creating new record
-            //*
-            if (values.Length != 0 && strs.Length != values.Length)
-            {
-                Console.WriteLine("WARN: Array size mismatch: assigning {0} values to array of size {1}.\nSetting: {2} -> {3}", strs.Length, values.Length, this, fromstr);
-                // return false;
-            }//*/
-
-            float fval = (float)0.0;
-            int[] nvalues = new int[strs.Length];
-
-            bool strmodified = false;
-            for (int i = 0; i < strs.Length; i++)
-            {
-                switch (dtype)
-                {
-                    case ARZEntryType.Int: // TODO: Move entry types to static Consts for clarity
-                        if (!int.TryParse(strs[i], out nvalues[i]))
-                        {
-                            Console.WriteLine("Error parsing integer value #{0}=\"{1}\"", i, strs[i]);
-                            return false;
-                        }
-                        break;
-                    case ARZEntryType.Real:
-                        if (!float.TryParse(strs[i], out fval))
-                        {
-                            Console.WriteLine("Error parsing float value #{0}=\"{1}\"", i, strs[i]);
-                            return false;
-                        }
-                        nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(fval), 0);
-                        break;
-                    case ARZEntryType.String: // String
-                        if (i < values.Length)
-                            if (strs[i] != StrTable[values[i]])
-                            {
-                                string origstr = StrTable[values[i]];
-                                nvalues[i] = Program.ModifyString(values[i], strs[i]);
-                                // Console.WriteLine("Changing string \"{0}\" to \"{1}\", Index {2} -> {3}", origstr, strs[i], values[i], nvalues[i]); // DEBUG
-                                strmodified = true;
-                            }
-                            else
-                                nvalues[i] = values[i];
-                        else
-                        { // New string
-                            nvalues[i] = Program.ModifyString(-1, strs[i]);
-                            // Console.WriteLine("Adding string \"{0}\", Index {1}", strs[i], nvalues[i]); // DEBUG
-                        }
-                        break;
-                    case ARZEntryType.Bool:
-                        if (!int.TryParse(strs[i], out nvalues[i]) || nvalues[i] > 1)
-                        {
-                            Console.WriteLine("Error parsing boolean value #{0}=\"{1}\"", i - 1, strs[i]);
-                            return false;
-                        }
-                        break;
-                    default:
-                        Console.WriteLine("Unknown data type in database"); // TODO: make more informative
-                        return false;
-                }
-            }
-            if (strmodified || values.Length != nvalues.Length || !values.SequenceEqual(nvalues))
-            {
-                values = nvalues;
-                this.dcount = (ushort)values.Length;
-                changed = true;
-            }
             return true;
         }
 

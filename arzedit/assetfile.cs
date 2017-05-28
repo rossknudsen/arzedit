@@ -6,6 +6,8 @@ using System.Text;
 
 namespace arzedit
 {
+    // Classes for reading asset files and compiling resources into resource folder
+
     public class AssetDataGeneric
     {
         public string srcfile = null;
