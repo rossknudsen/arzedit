@@ -546,7 +546,7 @@ namespace arzedit {
         public int[] values;
         public bool changed = false; // TODO: overhead
         public bool isarray = false;
-        public bool lowercase = false;
+        public bool isfile = false;
         private ARZRecord parent = null;
         // private ARZStrings strtable = null;
         // static SortedList<string, int> strsearchlist = null;
@@ -593,8 +593,8 @@ namespace arzedit {
                         
             if (vtype.StartsWith("file_"))
             {
-                vtype = "string"; // Make it string
-                lowercase = true;
+                vtype = "file"; // Make it string
+                isfile = true;
             }
 
             switch (vtype)
@@ -609,6 +609,7 @@ namespace arzedit {
                                 case "file_anm":
                                 case "file_ssh":
                 */
+                case "file":
                 case "equation":
                     dtype = ARZEntryType.String; // string type
                     break;
@@ -707,7 +708,7 @@ namespace arzedit {
                 return false;
             }
 
-            if (lowercase) valuestr = valuestr.ToLower();
+            if (isfile) valuestr = valuestr.Replace(Path.DirectorySeparatorChar, '/').ToLower();
 
             /* Not sure how to behave in this situation, trim all trailing ???, 
              * most compatible seems to be packing ; together to one variable and let parsing fail/default.
