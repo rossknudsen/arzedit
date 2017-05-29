@@ -12,7 +12,7 @@ namespace arzedit
 {   
     class Program
     {
-        const string VERSION = "0.2b3";
+        const string VERSION = "0.2b4";
         static byte[] footer = new byte[16];
         public static Logger Log = LogManager.GetCurrentClassLogger();
         public static List<string> strtable = null;
