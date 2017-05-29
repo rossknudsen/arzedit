@@ -160,6 +160,11 @@ namespace arzedit
 
         static int BuildAssets(string assetfolder, string sourcefolder, string buildfolder, string gamefolder)
         {
+            if (!Directory.Exists(assetfolder))
+            {
+                Log.Warn("No asset folder {0}. Skipping compilation.", assetfolder);
+                return 1;
+            }
             string[] assetfiles = Directory.GetFiles(assetfolder, "*", SearchOption.AllDirectories);
             int ci = 0;
             using (ProgressBar progress = new ProgressBar())
@@ -224,7 +229,8 @@ namespace arzedit
             {
                 // Assets
                 Console.Write("Compiling Assets ... ");
-                BuildAssets(Path.Combine(packfolder, "assets"), Path.Combine(packfolder, "source"), Path.Combine(buildfolder, "resources"), gamefolder);
+                if (BuildAssets(Path.Combine(packfolder, "assets"), Path.Combine(packfolder, "source"), Path.Combine(buildfolder, "resources"), gamefolder) != 0)
+                    Log.Warn("Error building assets.");
                 Console.WriteLine("Done");
             }
             //*
@@ -360,10 +366,10 @@ namespace arzedit
             if (!opt.SkipResources)
             {
                 // Pack resources
+                Console.WriteLine("Packing resources ... ");
                 string resfolder = Path.GetFullPath(Path.Combine(buildfolder, "resources"));
                 if (Directory.Exists(resfolder))
                 {
-                    Console.WriteLine("Packing resources ... ");
                     string[] resdirs = Directory.GetDirectories(resfolder, "*", SearchOption.TopDirectoryOnly);
                     foreach (string resdir in resdirs)
                     {
@@ -371,8 +377,11 @@ namespace arzedit
                         Log.Info("Packing folder \"{0}\", to: \"{1}\"", resdir, outfile);
                         ArcFolder(resdir, "*", outfile);
                     }
-                    Console.WriteLine("Done");
                 }
+                else {
+                    Log.Warn("Resource folder {0} not found, skipping.", resfolder);
+                }
+                Console.WriteLine("Done");
             }
             //*/
             Console.WriteLine("Build successful. Done ({0:c})", (TimeSpan)(DateTime.Now - beginbuild));
