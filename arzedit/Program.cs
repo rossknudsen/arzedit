@@ -740,7 +740,7 @@ namespace arzedit
             Console.WriteLine("\nUsage:");
             Console.WriteLine();
             Console.WriteLine("{0} <build|extract|arc|unarc> <suboptions>\n", Path.GetFileName(System.Reflection.Assembly.GetExecutingAssembly().Location));
-            Console.WriteLine("build <mod base> [<build path>] [-g <Grim Dawn folder>] [-t <additional template folders>]");
+            Console.WriteLine("build <mod base> [<build path>] [-g <Grim Dawn folder>] [-t <additional template folders>] [-ADRvs] [-l <log file>]");
             Console.WriteLine("  <mod base>         folder that contains mod sources");
             Console.Write("  <build path>       folder where to put built mod files");
             var ht = new HelpText();
