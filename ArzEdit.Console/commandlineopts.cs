@@ -4,7 +4,7 @@ namespace ArzEdit.Console;
 // Classes used by CommandLine parameter parsing library
 
 [Verb("set", HelpText = "Set values in database")]
-class SetOptions
+internal class SetOptions
 {
     [Value(0)]
     public string InputFile { get; set; }
@@ -41,7 +41,7 @@ class SetOptions
 }
 
 [Verb("get", HelpText = "Get records/values in database")]
-class GetOptions
+internal class GetOptions
 {
     [Value(0)]
     public string InputFile { get; set; }
@@ -54,7 +54,7 @@ class GetOptions
 }
 
 [Verb("extract", HelpText = "Extract records from database")]
-class ExtractOptions
+internal class ExtractOptions
 {
     [Value(0)]
     public string InputFile { get; set; }
@@ -73,7 +73,7 @@ class ExtractOptions
 }
 
 [Verb("pack", HelpText = "Pack records to database")]
-class PackOptions
+internal class PackOptions
 {
     [Value(0)]
     public string InputPath { get; set; }
@@ -101,7 +101,7 @@ class PackOptions
 }
 
 [Verb("build", HelpText = "Build mod")]
-class BuildOptions
+internal class BuildOptions
 {
     [Value(0)]
     public string ModPath { get; set; }
@@ -135,7 +135,7 @@ class BuildOptions
 }
 
 [Verb("unarc", HelpText = "Unpack arc file(s)")]
-class UnarcOptions
+internal class UnarcOptions
 {
     [Option]
     public string[] ArcFiles { get; set; }
@@ -145,7 +145,7 @@ class UnarcOptions
 }
 
 [Verb("arc", HelpText = "pack arc file(s)")]
-class ArcOptions
+internal class ArcOptions
 {
     [Value(0)]
     public string Folder { get; set; }

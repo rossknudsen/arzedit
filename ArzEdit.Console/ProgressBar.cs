@@ -12,11 +12,11 @@ public class ProgressBar : IDisposable, IProgress<double> {
 
     private readonly Timer timer;
 
-    private double currentProgress = 0;
+    private double currentProgress;
     private string currentText = string.Empty;
-    private bool disposed = false;
-    private int animationIndex = 0;
-    private bool hidden = false;
+    private bool disposed;
+    private int animationIndex;
+    private bool hidden;
 
     public ProgressBar() {
         timer = new Timer(TimerHandler);
@@ -46,11 +46,11 @@ public class ProgressBar : IDisposable, IProgress<double> {
         lock (timer) {
             if (disposed) return;
 
-            int progressBlockCount = (int) (currentProgress * blockCount);
-            int percent = (int) (currentProgress * 100);
+            var progressBlockCount = (int) (currentProgress * blockCount);
+            var percent = (int) (currentProgress * 100);
             if (!hidden)
             {
-                string text = string.Format("[{0}{1}] {2,3}% {3}",
+                var text = string.Format("[{0}{1}] {2,3}% {3}",
                     new string('#', progressBlockCount), new string('-', blockCount - progressBlockCount),
                     percent,
                     animation[animationIndex++ % animation.Length]);
@@ -65,21 +65,21 @@ public class ProgressBar : IDisposable, IProgress<double> {
 
     private void UpdateText(string text) {
         // Get length of common portion
-        int commonPrefixLength = 0;
-        int commonLength = Math.Min(currentText.Length, text.Length);
+        var commonPrefixLength = 0;
+        var commonLength = Math.Min(currentText.Length, text.Length);
         while (commonPrefixLength < commonLength && text[commonPrefixLength] == currentText[commonPrefixLength]) {
             commonPrefixLength++;
         }
 
         // Backtrack to the first differing character
-        StringBuilder outputBuilder = new StringBuilder();
+        var outputBuilder = new StringBuilder();
         outputBuilder.Append('\b', currentText.Length - commonPrefixLength);
 
         // Output new suffix
         outputBuilder.Append(text.Substring(commonPrefixLength));
 
         // If the new text is shorter than the old one: delete overlapping characters
-        int overlapCount = currentText.Length - text.Length;
+        var overlapCount = currentText.Length - text.Length;
         if (overlapCount > 0) {
             outputBuilder.Append(' ', overlapCount);
             outputBuilder.Append('\b', overlapCount);

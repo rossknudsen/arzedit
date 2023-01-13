@@ -11,38 +11,34 @@ public class ARCHeader
     public static readonly int HEADER_SIZE = 28;
     public char[] Magic = ARCMAGIC;
     public int Version = 3;
-    public int NumberOfFileEntries = 0;
-    public int NumberOfDataRecords = 0;
-    public int RecordTableSize = 0;
-    public int StringTableSize = 0;
-    public int RecordTableOffset = 0;
+    public int NumberOfFileEntries;
+    public int NumberOfDataRecords;
+    public int RecordTableSize;
+    public int StringTableSize;
+    public int RecordTableOffset;
 
     public void ReadStream(Stream astream)
     {
-        using (BinaryReader br = new BinaryReader(astream, System.Text.Encoding.ASCII, true))
-        {
-            Magic = br.ReadChars(4);
-            Version = br.ReadInt32();
-            NumberOfFileEntries = br.ReadInt32();
-            NumberOfDataRecords = br.ReadInt32();
-            RecordTableSize = br.ReadInt32();
-            StringTableSize = br.ReadInt32();
-            RecordTableOffset = br.ReadInt32();
-        }
+        using var br = new BinaryReader(astream, System.Text.Encoding.ASCII, true);
+        Magic = br.ReadChars(4);
+        Version = br.ReadInt32();
+        NumberOfFileEntries = br.ReadInt32();
+        NumberOfDataRecords = br.ReadInt32();
+        RecordTableSize = br.ReadInt32();
+        StringTableSize = br.ReadInt32();
+        RecordTableOffset = br.ReadInt32();
     }
 
     public void WriteStream(Stream astream)
     {
-        using (BinaryWriter bw = new BinaryWriter(astream, Encoding.ASCII, true))
-        {
-            bw.Write(Magic);
-            bw.Write(Version);
-            bw.Write(NumberOfFileEntries);
-            bw.Write(NumberOfDataRecords);
-            bw.Write(RecordTableSize);
-            bw.Write(StringTableSize);
-            bw.Write(RecordTableOffset);
-        }
+        using var bw = new BinaryWriter(astream, Encoding.ASCII, true);
+        bw.Write(Magic);
+        bw.Write(Version);
+        bw.Write(NumberOfFileEntries);
+        bw.Write(NumberOfDataRecords);
+        bw.Write(RecordTableSize);
+        bw.Write(StringTableSize);
+        bw.Write(RecordTableOffset);
     }
 
     public int GetTocOffset()
@@ -76,17 +72,12 @@ public class ARCHeader
 }
 
 public class ARCStringTable {
-    MemoryStream smem = null;
-
-    public ARCStringTable()
-    {
-
-    }
+    private MemoryStream smem;
 
     public void ReadFromStream(Stream astream, int tablesize) 
     {
         smem = new MemoryStream(tablesize);
-        byte[] buff = new byte[tablesize];
+        var buff = new byte[tablesize];
         astream.Read(buff, 0, tablesize);
         smem.Write(buff, 0, tablesize);
     }
@@ -106,7 +97,7 @@ public class ARCStringTable {
         }
             
         // smem.Seek(offset, SeekOrigin.Begin);
-        byte[] buff = smem.GetBuffer();
+        var buff = smem.GetBuffer();
         // byte[] buf = new byte[len];
         // smem.Read(buf, 0, len);
         return Encoding.ASCII.GetString(buff, offset, len);
@@ -122,7 +113,7 @@ public class ARCStringTable {
         if (smem == null)
             smem = new MemoryStream();
         smem.Seek(0, SeekOrigin.End);
-        int pos = (int)smem.Position;
+        var pos = (int)smem.Position;
         smem.Write(Encoding.ASCII.GetBytes(astring + Char.MinValue), 0, astring.Length + 1);
         return pos;
     }
@@ -143,45 +134,42 @@ public class ARCTocEntry
 
     public void ReadStream(Stream astream)
     {
-        using (BinaryReader br = new BinaryReader(astream, System.Text.Encoding.ASCII, true)) {
-            EntryType = br.ReadInt32();
-            FileOffset = br.ReadInt32();
-            CompressedSize = br.ReadInt32();
-            DecompressedSize = br.ReadInt32();
-            DecompressedHash = br.ReadInt32();
-            FileTime = DateTime.FromFileTimeUtc(br.ReadInt64());
-            FileParts = br.ReadInt32();
-            FirstPartIndex = br.ReadInt32();
-            StringEntryLength = br.ReadInt32();
-            StringEntryOffset = br.ReadInt32();
-        }
+        using var br = new BinaryReader(astream, System.Text.Encoding.ASCII, true);
+        EntryType = br.ReadInt32();
+        FileOffset = br.ReadInt32();
+        CompressedSize = br.ReadInt32();
+        DecompressedSize = br.ReadInt32();
+        DecompressedHash = br.ReadInt32();
+        FileTime = DateTime.FromFileTimeUtc(br.ReadInt64());
+        FileParts = br.ReadInt32();
+        FirstPartIndex = br.ReadInt32();
+        StringEntryLength = br.ReadInt32();
+        StringEntryOffset = br.ReadInt32();
     }
 
     public void WriteStream(Stream astream)
     {
-        using (BinaryWriter bw = new BinaryWriter(astream, Encoding.ASCII, true))
-        {
-            // EntryType = br.ReadInt32();
-            bw.Write(EntryType);
-            // FileOffset = br.ReadInt32();
-            bw.Write(FileOffset);
-            // CompressedSize = br.ReadInt32();
-            bw.Write(CompressedSize);
-            // DecompressedSize = br.ReadInt32();
-            bw.Write(DecompressedSize);
-            // DecompressedHash = br.ReadInt32();
-            bw.Write(DecompressedHash);
-            // FileTime = DateTime.FromFileTimeUtc(br.ReadInt64());
-            bw.Write(FileTime.ToFileTimeUtc());
-            // FileParts = br.ReadInt32();
-            bw.Write(FileParts);
-            // FirstPartIndex = br.ReadInt32();
-            bw.Write(FirstPartIndex);
-            // StringEntryLength = br.ReadInt32();
-            bw.Write(StringEntryLength);
-            // StringEntryOffset = br.ReadInt32();
-            bw.Write(StringEntryOffset);
-        }
+        using var bw = new BinaryWriter(astream, Encoding.ASCII, true);
+        // EntryType = br.ReadInt32();
+        bw.Write(EntryType);
+        // FileOffset = br.ReadInt32();
+        bw.Write(FileOffset);
+        // CompressedSize = br.ReadInt32();
+        bw.Write(CompressedSize);
+        // DecompressedSize = br.ReadInt32();
+        bw.Write(DecompressedSize);
+        // DecompressedHash = br.ReadInt32();
+        bw.Write(DecompressedHash);
+        // FileTime = DateTime.FromFileTimeUtc(br.ReadInt64());
+        bw.Write(FileTime.ToFileTimeUtc());
+        // FileParts = br.ReadInt32();
+        bw.Write(FileParts);
+        // FirstPartIndex = br.ReadInt32();
+        bw.Write(FirstPartIndex);
+        // StringEntryLength = br.ReadInt32();
+        bw.Write(StringEntryLength);
+        // StringEntryOffset = br.ReadInt32();
+        bw.Write(StringEntryOffset);
     }
 
     public void PrintTocEntry(ARCStringTable strtable = null) {
@@ -229,12 +217,10 @@ public class ARCFilePart
 
     public void ReadStream(Stream astream)
     {
-        using (BinaryReader br = new BinaryReader(astream, Encoding.ASCII, true))
-        {
-            PartOffset = br.ReadInt32();
-            CompressedSize = br.ReadInt32();
-            DecompressedSize = br.ReadInt32();
-        }
+        using var br = new BinaryReader(astream, Encoding.ASCII, true);
+        PartOffset = br.ReadInt32();
+        CompressedSize = br.ReadInt32();
+        DecompressedSize = br.ReadInt32();
     }
 
     public void PrintFilePart()
@@ -248,13 +234,13 @@ public class ARCFilePart
 public class ARCWriter : IDisposable
 {
     public static readonly int MAX_BLOCK_SIZE = 256 * 1024;
-    ARCHeader whdr = null;
-    ARCStringTable wstrs = null;
-    List<ARCTocEntry> wtoc = null;
-    List<ARCFilePart> wparts = null;
-    Stream wstream = null;
-    bool started = false;
-    bool finished = false;
+    private ARCHeader whdr;
+    private readonly ARCStringTable wstrs;
+    private readonly List<ARCTocEntry> wtoc;
+    private readonly List<ARCFilePart> wparts;
+    private readonly Stream wstream;
+    private bool started;
+    private bool finished;
 
     public ARCWriter(Stream outstream)
     {
@@ -268,8 +254,8 @@ public class ARCWriter : IDisposable
 
     public int WriteRecordTable(List<ARCFilePart> aparts, Stream astream)
     {
-        using (BinaryWriter bw = new BinaryWriter(astream, Encoding.ASCII, true))
-            for (int p = 0; p < aparts.Count; p++)
+        using (var bw = new BinaryWriter(astream, Encoding.ASCII, true))
+            for (var p = 0; p < aparts.Count; p++)
             {
                 bw.Write(aparts[p].PartOffset);
                 bw.Write(aparts[p].CompressedSize);
@@ -280,23 +266,23 @@ public class ARCWriter : IDisposable
 
     public void WriteFromTocEntry(ARCFile afile, ARCTocEntry aentry)
     {
-        string entryname = aentry.GetEntryString(afile.strs);
-        ARCTocEntry newentry = new ARCTocEntry();
+        var entryname = aentry.GetEntryString(afile.strs);
+        var newentry = new ARCTocEntry();
         newentry.StringEntryOffset = wstrs.Append(entryname);
         newentry.StringEntryLength = entryname.Length;
         newentry.FileOffset = (int)wstream.Position;
         newentry.FileParts = aentry.FileParts;
         newentry.FirstPartIndex = wparts.Count;
         // Write compressed parts:
-        for (int p = 0; p < aentry.FileParts; p++)
+        for (var p = 0; p < aentry.FileParts; p++)
         {
-            ARCFilePart newpart = new ARCFilePart();
-            ARCFilePart cpart = afile.parts[aentry.FirstPartIndex + p];
+            var newpart = new ARCFilePart();
+            var cpart = afile.parts[aentry.FirstPartIndex + p];
             newpart.CompressedSize = cpart.CompressedSize;
             newpart.DecompressedSize = cpart.DecompressedSize;
             newpart.PartOffset = (int)wstream.Position; // Remember offset
             // Get compressed part
-            byte[] cbuff = new byte[cpart.CompressedSize];
+            var cbuff = new byte[cpart.CompressedSize];
             afile.fstream.Seek(cpart.PartOffset, SeekOrigin.Begin);
             afile.fstream.Read(cbuff, 0, cpart.CompressedSize);
             // Write actual part:
@@ -314,23 +300,23 @@ public class ARCWriter : IDisposable
 
     public void WriteFromStream(string entryname, DateTime entrytime, Stream astream)
     {
-        ARCTocEntry newentry = new ARCTocEntry();
+        var newentry = new ARCTocEntry();
         newentry.StringEntryOffset = wstrs.Append(entryname);
         newentry.StringEntryLength = entryname.Length;
         newentry.FileOffset = (int)wstream.Position;
         // newentry.FileParts = (int)astream.Length / MAX_BLOCK_SIZE;
         newentry.FirstPartIndex = wparts.Count;
         int read = 0, partcount = 0, csize = 0;
-        byte[] buffer = new byte[MAX_BLOCK_SIZE];
+        var buffer = new byte[MAX_BLOCK_SIZE];
         // Adler32;
-        Adler32 adler = new Adler32();
+        var adler = new Adler32();
         while ((read = astream.Read(buffer, 0, MAX_BLOCK_SIZE)) > 0) {
             // newblock
             adler.ComputeHash(buffer, 0, read);
-            ARCFilePart newpart = new ARCFilePart();
+            var newpart = new ARCFilePart();
             newpart.PartOffset = (int)wstream.Position;
             newpart.DecompressedSize = read;
-            byte[] cbuffer = LZ4Codec.Encode(buffer, 0, read);
+            var cbuffer = LZ4Codec.Encode(buffer, 0, read);
             if (cbuffer.Length < read)
             {
                 newpart.CompressedSize = cbuffer.Length;
@@ -361,7 +347,7 @@ public class ARCWriter : IDisposable
         {
             whdr = new ARCHeader();
             // whdr.WriteStream(wstream); // Empty header for now
-            byte[] zeroes = new byte[0x800];
+            var zeroes = new byte[0x800];
             Array.Clear(zeroes, 0, 0x800);
             wstream.Write(zeroes, 0, 0x800);
             started = true;
@@ -376,7 +362,7 @@ public class ARCWriter : IDisposable
         whdr.StringTableSize = wstrs.WriteToStream(wstream);
         // Now write TOC table
         whdr.NumberOfFileEntries = wtoc.Count;
-        for (int i = 0; i < wtoc.Count; i++)
+        for (var i = 0; i < wtoc.Count; i++)
         {
             wtoc[i].WriteStream(wstream);
         }
@@ -400,14 +386,11 @@ public class ARCWriter : IDisposable
 
 public class ARCFile
 {
-    public ARCHeader hdr = null;
-    public ARCStringTable strs = null;
-    public List<ARCTocEntry> toc = null;
-    public List<ARCFilePart> parts = null;
-    public Stream fstream = null;
-    public ARCFile()
-    {
-    }
+    public ARCHeader hdr;
+    public ARCStringTable strs;
+    public List<ARCTocEntry> toc;
+    public List<ARCFilePart> parts;
+    public Stream fstream;
 
     public void ReadStream(Stream astream)
     {
@@ -420,9 +403,9 @@ public class ARCFile
         // TODO - take out creating and disposing of BinaryReader out of the loop
         parts = new List<ARCFilePart>();
         astream.Seek(hdr.RecordTableOffset, SeekOrigin.Begin);
-        for (int i = 0; i < hdr.NumberOfDataRecords; i++)
+        for (var i = 0; i < hdr.NumberOfDataRecords; i++)
         {
-            ARCFilePart prec = new ARCFilePart();
+            var prec = new ARCFilePart();
             prec.ReadStream(astream);
             parts.Add(prec);
         }
@@ -436,9 +419,9 @@ public class ARCFile
         toc = new List<ARCTocEntry>();
         toc.Capacity = hdr.NumberOfFileEntries;
         astream.Seek(hdr.GetTocOffset(), SeekOrigin.Begin);
-        for (int i = 0; i < hdr.NumberOfFileEntries; i++)
+        for (var i = 0; i < hdr.NumberOfFileEntries; i++)
         {
-            ARCTocEntry tocentry = new ARCTocEntry();
+            var tocentry = new ARCTocEntry();
             tocentry.ReadStream(astream);
             /*// DEBUG:
             if (tocentry.GetEntryString(strs) == "")
@@ -458,14 +441,14 @@ public class ARCFile
             CopyBytes(aentry.CompressedSize, fstream, tostream);
         } else
         {
-            for (int p = 0; p < aentry.FileParts; p++) {
-                ARCFilePart cpart = parts[aentry.FirstPartIndex + p];
-                byte[] cbuff = new byte[cpart.CompressedSize];
+            for (var p = 0; p < aentry.FileParts; p++) {
+                var cpart = parts[aentry.FirstPartIndex + p];
+                var cbuff = new byte[cpart.CompressedSize];
                 fstream.Seek(cpart.PartOffset, SeekOrigin.Begin);
                 fstream.Read(cbuff, 0, cpart.CompressedSize);
                 if (cpart.CompressedSize < cpart.DecompressedSize)
                 {
-                    byte[] dbuff = LZ4Codec.Decode(cbuff, 0, cpart.CompressedSize, cpart.DecompressedSize);
+                    var dbuff = LZ4Codec.Decode(cbuff, 0, cpart.CompressedSize, cpart.DecompressedSize);
                     tostream.Write(dbuff, 0, cpart.DecompressedSize);
                 } else
                 {
@@ -479,40 +462,35 @@ public class ARCFile
     public void RepackToStream(Stream tstream)
     {
         // BeginWrite(tstream);
-        using (ARCWriter awriter = new ARCWriter(tstream))
+        using var awriter = new ARCWriter(tstream);
+        foreach (var entry in toc)
         {
-            foreach (ARCTocEntry entry in toc)
-            {
-                awriter.WriteFromTocEntry(this, entry);
-            }
+            awriter.WriteFromTocEntry(this, entry);
         }
     }
 
-    public void RepackToFile(string filename) {
-        using (FileStream fs = new FileStream(filename, FileMode.Create))
-        {
-            RepackToStream(fs);
-        }
+    public void RepackToFile(string filename)
+    {
+        using var fs = new FileStream(filename, FileMode.Create);
+        RepackToStream(fs);
     }
 
 
     public void UnpackToFile(ARCTocEntry aentry, string filename)
     {
-        using (FileStream fs = new FileStream(filename, FileMode.Create))
-        {
-            UnpackToStream(aentry, fs);
-        }
+        using var fs = new FileStream(filename, FileMode.Create);
+        UnpackToStream(aentry, fs);
     }
 
     public void UnpackAll(string tofolder)
     {
-        foreach (ARCTocEntry aentry in toc)
+        foreach (var aentry in toc)
         {
-            string entrystr = aentry.GetEntryString(strs);
+            var entrystr = aentry.GetEntryString(strs);
             if (aentry.EntryType != 3)
                 aentry.PrintTocEntry();
             if (string.IsNullOrEmpty(entrystr)) continue; // TODO: Important - What are these empty entries? they have some packed data, but have no blocks and type is 0
-            string afilename = Path.Combine(tofolder, entrystr.Replace('/', Path.DirectorySeparatorChar));
+            var afilename = Path.Combine(tofolder, entrystr.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(afilename));
             // Console.WriteLine("Unpacking \"{0}\"", afilename);                
             // DEBUG:
@@ -532,7 +510,7 @@ public class ARCFile
 
     public static long CopyBytes(long bytesRequired, Stream inStream, Stream outStream)
     {
-        long readSoFar = 0L;
+        var readSoFar = 0L;
         var buffer = new byte[64 * 1024];
         do
         {

@@ -1,10 +1,10 @@
 ﻿namespace ArzEdit.Service;
 // Utility classes
 
-class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "char"
+internal class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "char"
 {
     // Shameless Rip, source - Wikipedia :D
-    const int ALPHABET_SIZE = 0xFF + 1;
+    private const int ALPHABET_SIZE = 0xFF + 1;
     /**
          * Returns the index within this string of the first occurrence of the
          * specified substring. If it is not a substring, return -1.
@@ -19,8 +19,8 @@ class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "
         {
             return 0;
         }
-        int[] charTable = makeCharTable(needle);
-        int[] offsetTable = makeOffsetTable(needle);
+        var charTable = makeCharTable(needle);
+        var offsetTable = makeOffsetTable(needle);
         for (int i = needle.Length - 1, j; i < haystack.Length;)
         {
             for (j = needle.Length - 1; needle[j] == haystack[i]; --i, --j)
@@ -42,12 +42,12 @@ class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "
     private static int[] makeCharTable(byte[] needle)
     {
 
-        int[] table = new int[ALPHABET_SIZE];
-        for (int i = 0; i < table.Length; ++i)
+        var table = new int[ALPHABET_SIZE];
+        for (var i = 0; i < table.Length; ++i)
         {
             table[i] = needle.Length;
         }
-        for (int i = 0; i < needle.Length - 1; ++i)
+        for (var i = 0; i < needle.Length - 1; ++i)
         {
             table[needle[i]] = needle.Length - 1 - i;
         }
@@ -59,9 +59,9 @@ class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "
          */
     private static int[] makeOffsetTable(byte[] needle)
     {
-        int[] table = new int[needle.Length];
-        int lastPrefixPosition = needle.Length;
-        for (int i = needle.Length; i > 0; --i)
+        var table = new int[needle.Length];
+        var lastPrefixPosition = needle.Length;
+        for (var i = needle.Length; i > 0; --i)
         {
             if (isPrefix(needle, i))
             {
@@ -69,9 +69,9 @@ class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "
             }
             table[needle.Length - i] = lastPrefixPosition - i + needle.Length;
         }
-        for (int i = 0; i < needle.Length - 1; ++i)
+        for (var i = 0; i < needle.Length - 1; ++i)
         {
-            int slen = suffixLength(needle, i);
+            var slen = suffixLength(needle, i);
             table[slen] = needle.Length - 1 - i + slen;
         }
         return table;
@@ -97,7 +97,7 @@ class BoyerMoore // For finding sequence of bytes in byte buffer, adapted from "
          */
     private static int suffixLength(byte[] needle, int p)
     {
-        int len = 0;
+        var len = 0;
         for (int i = p, j = needle.Length - 1;
              i >= 0 && needle[i] == needle[j]; --i, --j)
         {
@@ -124,8 +124,8 @@ public class Adler32 // Adler32 checksum calculator class
     public uint ComputeHash(byte[] bytesArray, int byteStart, int bytesToRead)
     {
         int n;
-        uint s1 = checksum & 0xFFFF;
-        uint s2 = checksum >> 16;
+        var s1 = checksum & 0xFFFF;
+        var s2 = checksum >> 16;
 
         while (bytesToRead > 0)
         {

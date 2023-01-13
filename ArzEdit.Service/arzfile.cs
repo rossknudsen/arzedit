@@ -7,12 +7,12 @@ namespace ArzEdit.Service;
 
 public class ARZWriter
 {
-    public ARZStrings strtable = null;
-    int rcount = 0;
-    MemoryStream mrecdata;
-    MemoryStream mrectable;
-    ARZHeader hdr;
-    public Dictionary<string, TemplateNode> ftemplates = null;
+    public ARZStrings strtable;
+    private int rcount;
+    private readonly MemoryStream mrecdata;
+    private readonly MemoryStream mrectable;
+    private readonly ARZHeader hdr;
+    public Dictionary<string, TemplateNode> ftemplates;
     public ARZWriter(Dictionary<string, TemplateNode> atemplates = null)
     {
         ftemplates = atemplates;
@@ -29,7 +29,7 @@ public class ARZWriter
 
     public void WriteFromRecord(ARZRecord rec)
     {
-        ARZRecord clone = new ARZRecord(rec, strtable);
+        var clone = new ARZRecord(rec, strtable);
         WriteRecord(clone);
     }
 
@@ -45,7 +45,7 @@ public class ARZWriter
     {
         // if (recordname.Contains(@"petskill_demo_attack.dbr"))
         // Console.WriteLine("BUG:");
-        ARZRecord nrec = new ARZRecord(recordname, lines, ftemplates, strtable);
+        var nrec = new ARZRecord(recordname, lines, ftemplates, strtable);
         WriteRecord(nrec);
     }
 
@@ -55,29 +55,29 @@ public class ARZWriter
         hdr.RecordTableStart = ARZHeader.HEADER_SIZE + (int)mrecdata.Length;
         hdr.RecordTableSize = (int)mrectable.Length;
         hdr.RecordTableEntries = rcount;
-        MemoryStream mstrtable = new MemoryStream();
+        var mstrtable = new MemoryStream();
         strtable.WriteToStream(mstrtable);
         hdr.StringTableStart = hdr.RecordTableStart + hdr.RecordTableSize;
         hdr.StringTableSize = (int)mstrtable.Length;
         // Write header
         ost.Seek(0, SeekOrigin.Begin);
-        MemoryStream mhdr = new MemoryStream(ARZHeader.HEADER_SIZE);
+        var mhdr = new MemoryStream(ARZHeader.HEADER_SIZE);
         hdr.WriteToStream(mhdr);
 
         // Checksums:
-        Adler32 hashall = new Adler32();
-        byte[] buf = mhdr.GetBuffer();
+        var hashall = new Adler32();
+        var buf = mhdr.GetBuffer();
         hashall.ComputeHash(buf, 0, (int)mhdr.Length);
         buf = mrecdata.GetBuffer();
         hashall.ComputeHash(buf, 0, (int)mrecdata.Length);
-        uint hrdata = (new Adler32()).ComputeHash(buf, 0, (int)mrecdata.Length);
+        var hrdata = (new Adler32()).ComputeHash(buf, 0, (int)mrecdata.Length);
         buf = mrectable.GetBuffer();
         hashall.ComputeHash(buf, 0, (int)mrectable.Length);
-        uint hrtable = (new Adler32()).ComputeHash(buf, 0, (int)mrectable.Length);
+        var hrtable = (new Adler32()).ComputeHash(buf, 0, (int)mrectable.Length);
         buf = mstrtable.GetBuffer();
         hashall.ComputeHash(buf, 0, (int)mstrtable.Length);
-        uint hstable = (new Adler32()).ComputeHash(buf, 0, (int)mstrtable.Length);
-        uint hall = hashall.checksum;
+        var hstable = (new Adler32()).ComputeHash(buf, 0, (int)mstrtable.Length);
+        var hall = hashall.checksum;
             
         // Write data
         mhdr.WriteTo(ost);
@@ -86,21 +86,19 @@ public class ARZWriter
         mstrtable.WriteTo(ost);
 
         // Write Footer:
-        using (BinaryWriter bw = new BinaryWriter(ost, Encoding.ASCII, true))
-        {
-            bw.Write(hashall.checksum);
-            bw.Write(hstable);
-            bw.Write(hrdata);
-            bw.Write(hrtable);
-        }
+        using var bw = new BinaryWriter(ost, Encoding.ASCII, true);
+        bw.Write(hashall.checksum);
+        bw.Write(hstable);
+        bw.Write(hrdata);
+        bw.Write(hrtable);
     }        
 }
 
 public class ARZReader {        
-    private Stream fstream = null;
-    public ARZHeader hdr = null;
-    public ARZStrings strtable = null;
-    private List<ARZRecord> rectable = null;
+    private readonly Stream fstream;
+    public ARZHeader hdr;
+    public ARZStrings strtable;
+    private List<ARZRecord> rectable;
         
     public ARZReader(Stream astream)
     {
@@ -129,25 +127,24 @@ public class ARZReader {
 
     public List<ARZRecord> ReadRecordTable(Stream astream, int rcount)
     {
-        List<ARZRecord> rlist = new List<ARZRecord>();
+        var rlist = new List<ARZRecord>();
         rlist.Capacity = (int)rcount;
-        using (BinaryReader br = new BinaryReader(astream, Encoding.ASCII, true))
+        using var br = new BinaryReader(astream, Encoding.ASCII, true);
+        for (var i = 0; i < rcount; i++)
         {
-            for (int i = 0; i < rcount; i++)
-            {
-                rlist.Add(new ARZRecord(br, strtable));
-            }
+            rlist.Add(new ARZRecord(br, strtable));
         }
+
         return rlist;
     }
 
     public ARZRecord GetRecord(int id) {
-        ARZRecord rec = rectable[id];
+        var rec = rectable[id];
         if (rec.entries == null)
         {
             fstream.Seek(ARZHeader.HEADER_SIZE + rec.rdOffset, SeekOrigin.Begin);
-            using (BinaryReader br = new BinaryReader(fstream, Encoding.ASCII, true))
-                rec.ReadData(br);
+            using var br = new BinaryReader(fstream, Encoding.ASCII, true);
+            rec.ReadData(br);
         }
         return rec;
     }
@@ -155,8 +152,8 @@ public class ARZReader {
 }
 
 public class ARZStrings {
-    private List<string> strtable = null;
-    private SortedDictionary<string, int> strsearchlist = null;
+    private List<string> strtable;
+    private SortedDictionary<string, int> strsearchlist;
 
     public ARZStrings()
     {
@@ -177,19 +174,17 @@ public class ARZStrings {
         if (strtable == null)
             strtable = new List<string>();
         strtable.Capacity = 0;
-        int pos = 0;
-        using (BinaryReader br = new BinaryReader(astream, Encoding.ASCII, true))
+        var pos = 0;
+        using var br = new BinaryReader(astream, Encoding.ASCII, true);
+        while (pos < size)
         {
-            while (pos < size)
+            var count = br.ReadInt32(); pos += 4; // Read Count
+            // Logger.Log.Trace("Block at pos: {0}; Count: {1}", pos, count);
+            strtable.Capacity += count;
+            for (var i = 0; i < count; i++)
             {
-                int count = br.ReadInt32(); pos += 4; // Read Count
-                // Logger.Log.Trace("Block at pos: {0}; Count: {1}", pos, count);
-                strtable.Capacity += count;
-                for (int i = 0; i < count; i++)
-                {
-                    int length = br.ReadInt32(); pos += 4;
-                    strtable.Add(new string(br.ReadChars(length))); pos += length;
-                }
+                var length = br.ReadInt32(); pos += 4;
+                strtable.Add(new string(br.ReadChars(length))); pos += length;
             }
         }
     }
@@ -197,14 +192,12 @@ public class ARZStrings {
 
     public void WriteToStream(Stream astream)
     {
-        using (BinaryWriter bw = new BinaryWriter(astream, Encoding.ASCII, true))
+        using var bw = new BinaryWriter(astream, Encoding.ASCII, true);
+        bw.Write((int)strtable.Count);
+        foreach (var s in strtable)
         {
-            bw.Write((int)strtable.Count);
-            foreach (string s in strtable)
-            {
-                bw.Write((int)s.Length);
-                bw.Write(s.ToCharArray());
-            }
+            bw.Write((int)s.Length);
+            bw.Write(s.ToCharArray());
         }
     }        
 
@@ -237,7 +230,7 @@ public class ARZStrings {
     public void BuildStringSearchList()
     {
         strsearchlist = new SortedDictionary<string, int>();
-        for (int i = 0; i < strtable.Count; i++)
+        for (var i = 0; i < strtable.Count; i++)
         {
             strsearchlist.Add(strtable[i], i);
         }
@@ -256,12 +249,12 @@ public class ARZRecord
     public DateTime rdFileTime;
     public byte[] cData;
     public byte[] aData;
-    public List<ARZEntry> entries = null;
-    public ARZStrings strtable = null;
-    private HashSet<string> entryset = null;
+    public List<ARZEntry> entries;
+    public ARZStrings strtable;
+    private readonly HashSet<string> entryset;
     public string Name { get { return strtable?[rfid]; } }
 
-    private static ARZEntryComparer NameComparer = new ARZEntryComparer();
+    private static readonly ARZEntryComparer NameComparer = new ARZEntryComparer();
    
         
     public ARZRecord(string rname, string[] rstrings, Dictionary<string, TemplateNode> templates, ARZStrings astrtable)
@@ -273,14 +266,14 @@ public class ARZRecord
         entries = new List<ARZEntry>();
         entryset = new HashSet<string>();
         TemplateNode tpl = null;
-        foreach (string line in rstrings) {
+        foreach (var line in rstrings) {
             if (line.StartsWith("templateName"))
             {
-                string[] eexpl = line.Split(',');
+                var eexpl = line.Split(',');
                 try
                 {
                     tpl = templates[eexpl[1]];
-                    ARZEntry newentry = new ARZEntry(eexpl[0], TemplateNode.TemplateNameVar, rname, this);
+                    var newentry = new ARZEntry(eexpl[0], TemplateNode.TemplateNameVar, rname, this);
                     if (newentry.TryAssign(eexpl[0], eexpl[1], strtable, ""))
                     {
                         entries.Add(newentry);
@@ -301,10 +294,10 @@ public class ARZRecord
             Logger.Log.LogError("Record {0} has no template!", rname); // DEBUG
             throw new Exception(string.Format("Record {0} has no template!", rname));
         }
-        foreach (string estr in rstrings)
+        foreach (var estr in rstrings)
         {
             TemplateNode vart = null;
-            string[] eexpl = estr.Split(',');
+            var eexpl = estr.Split(',');
             if (eexpl.Length != 3)
             {
                 // Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", Name, estr);
@@ -316,9 +309,9 @@ public class ARZRecord
                     continue;
                 }
             }
-            string varname = eexpl[0];
-            string vvalue = eexpl[1];
-            string defaultsto = "";
+            var varname = eexpl[0];
+            var vvalue = eexpl[1];
+            var defaultsto = "";
             if (string.IsNullOrEmpty(varname))
             {
                 Logger.Log.LogWarning("Record \"{0}\" - Has empty entry name, Skipping", Name);
@@ -353,7 +346,7 @@ public class ARZRecord
                     {
                         // Console.WriteLine("Record {0} duplicate entry {1} - Overwriting.", rname, varname); // TODO: Do not ignore, Overwrite
                         Logger.Log.LogInformation("Record {0} duplicate entry {1} - Overwriting.", rname, varname);
-                        ARZEntry entry = entries.Find(e => e.Name == varname);
+                        var entry = entries.Find(e => e.Name == varname);
                         entry.TryAssign(varname, vvalue, strtable, defaultsto);
                         continue;
                     }
@@ -364,7 +357,7 @@ public class ARZRecord
                         // DEBUG:
                         // if (rname.EndsWith("caravan_backgroundimage.dbr") && varname == "FileDescription" && eexpl[1].StartsWith("BitmapSingle"))
                         // Console.WriteLine("Error here...");
-                        ARZEntry newentry = new ARZEntry(varname, vart, rname, this);
+                        var newentry = new ARZEntry(varname, vart, rname, this);
                         if (newentry.TryAssign(varname, vvalue, strtable, defaultsto))
                         {
                             entries.Add(newentry);
@@ -390,7 +383,7 @@ public class ARZRecord
         rtype = tocopy.rtype;
         rdFileTime = tocopy.rdFileTime;
         entries = new List<ARZEntry>();
-        foreach (ARZEntry tce in tocopy.entries)
+        foreach (var tce in tocopy.entries)
         {
             entries.Add(new ARZEntry(tce, this));
         }
@@ -408,7 +401,7 @@ public class ARZRecord
         // read record info
         rfid = rdata.ReadInt32();
         // string record_file = strtable[rfid];
-        int rtypelen = rdata.ReadInt32();
+        var rtypelen = rdata.ReadInt32();
         rtype = new string(rdata.ReadChars(rtypelen));
         rdOffset = rdata.ReadInt32();
         rdSizeCompressed = rdata.ReadInt32();
@@ -422,9 +415,9 @@ public class ARZRecord
         aData = LZ4Codec.Decode(cData, 0, rdSizeCompressed, rdSizeDecompressed);
         entries = new List<ARZEntry>();
         // entries.Capacity = ((rdSizeDecompressed - 8) / 4); // Wrong capacity
-        using (MemoryStream eMem = new MemoryStream(aData))
+        using (var eMem = new MemoryStream(aData))
         {
-            using (BinaryReader eDbr = new BinaryReader(eMem))
+            using (var eDbr = new BinaryReader(eMem))
             {
                 while (eMem.Position < eMem.Length)
                     entries.Add(new ARZEntry(eDbr, this));
@@ -442,63 +435,57 @@ public class ARZRecord
 
     public void PackData()
     {
-        int datasize = entries.Count * 8; // Headers
-        foreach (ARZEntry e in entries)
+        var datasize = entries.Count * 8; // Headers
+        foreach (var e in entries)
             datasize += e.values.Length * 4; // + Data
-        using (MemoryStream mStream = new MemoryStream(datasize))
+        using var mStream = new MemoryStream(datasize);
+        using (var bWriter = new BinaryWriter(mStream))
         {
-            using (BinaryWriter bWriter = new BinaryWriter(mStream))
+            mStream.Seek(0, SeekOrigin.Begin);
+            foreach (var e in entries)
             {
-                mStream.Seek(0, SeekOrigin.Begin);
-                foreach (ARZEntry e in entries)
-                {
-                    // e.dcount;
-                    e.dcount = (ushort)e.values.Length;
-                    // Console.WriteLine("Packing {0} - Len: {1} ", Program.strtable[e.dstrid], e.dcount); // DEBUG
-                    e.WriteBytes(bWriter);
-                }
+                // e.dcount;
+                e.dcount = (ushort)e.values.Length;
+                // Console.WriteLine("Packing {0} - Len: {1} ", Program.strtable[e.dstrid], e.dcount); // DEBUG
+                e.WriteBytes(bWriter);
             }
-
-            // Replace data
-            aData = mStream.GetBuffer();
-            rdSizeDecompressed = aData.Length;
-            cData = LZ4Codec.Encode(aData, 0, rdSizeDecompressed);
-            aData = null;
-            rdSizeCompressed = cData.Length;
         }
+
+        // Replace data
+        aData = mStream.GetBuffer();
+        rdSizeDecompressed = aData.Length;
+        cData = LZ4Codec.Encode(aData, 0, rdSizeDecompressed);
+        aData = null;
+        rdSizeCompressed = cData.Length;
     }
 
     public void SaveToFile(string filename)
     {
-        using (FileStream fs = new FileStream(filename, FileMode.Create))
-            SaveToStream(fs);
+        using var fs = new FileStream(filename, FileMode.Create);
+        SaveToStream(fs);
     }
 
     public void SaveToStream(Stream astream)
     {
-        using (StreamWriter sr = new StreamWriter(astream))
+        using var sr = new StreamWriter(astream);
+        sr.NewLine = "\n";
+        foreach (var etr in entries)
         {
-            sr.NewLine = "\n";
-            foreach (ARZEntry etr in entries)
+            var estring = etr.ToString();
+            if (estring.Contains('\n') || estring.Contains(Environment.NewLine))
             {
-                string estring = etr.ToString();
-                if (estring.Contains('\n') || estring.Contains(Environment.NewLine))
-                {
-                    // Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
-                    Logger.Log.LogInformation("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
-                    estring = System.Text.RegularExpressions.Regex.Replace(estring, @"\r\n?|\n", "");
-                }
-                sr.WriteLine(estring);
+                // Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
+                Logger.Log.LogInformation("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
+                estring = System.Text.RegularExpressions.Regex.Replace(estring, @"\r\n?|\n", "");
             }
+            sr.WriteLine(estring);
         }
     }
 
     public void WriteToStream(Stream rtstream)
     {
-        using (BinaryWriter bw = new BinaryWriter(rtstream, Encoding.ASCII, true))
-        {
-            WriteRecord(bw, rdOffset);
-        }
+        using var bw = new BinaryWriter(rtstream, Encoding.ASCII, true);
+        WriteRecord(bw, rdOffset);
     }
 
     public void WriteRecord(BinaryWriter rtable, int dataoffset)
@@ -540,10 +527,10 @@ public class ARZEntry
     public ushort dcount;
     public int dstrid;
     public int[] values;
-    public bool changed = false; // TODO: overhead
-    public bool isarray = false;
-    public bool isfile = false;
-    private ARZRecord parent = null;
+    public bool changed; // TODO: overhead
+    public bool isarray;
+    public bool isfile;
+    private readonly ARZRecord parent;
     // private ARZStrings strtable = null;
     // static SortedList<string, int> strsearchlist = null;
     public ARZStrings StrTable { get { return parent?.strtable; } }
@@ -558,7 +545,7 @@ public class ARZEntry
         dcount = tocopy.dcount;
         values = (int[])tocopy.values.Clone();
         if (dtype == ARZEntryType.String)
-            for (int i = 0; i < values.Length; i++) {
+            for (var i = 0; i < values.Length; i++) {
                 values[i] = StrTable.AddString(tocopy.AsString(i));
             }
     }
@@ -642,7 +629,7 @@ public class ARZEntry
         dstrid = edata.ReadInt32();
         // read all entries
         values = new int[dcount];
-        for (int i = 0; i < dcount; i++)
+        for (var i = 0; i < dcount; i++)
         {
             values[i] = edata.ReadInt32();
         }
@@ -653,7 +640,7 @@ public class ARZEntry
         edata.Write((ushort)dtype);
         edata.Write(dcount);
         edata.Write(dstrid);
-        foreach (int v in values)
+        foreach (var v in values)
             edata.Write(v);
     }
 
@@ -711,7 +698,7 @@ public class ARZEntry
         if (dtype != ARZEntryType.String && isarray) // Ignore last array element entry if has trailing ;
             valuestr = valuestr.TrimEnd(';');
         */
-        string[] strs = valuestr.Split(';');
+        var strs = valuestr.Split(';');
         if (!isarray )
         {
             if (strs.Length > 1)
@@ -730,9 +717,9 @@ public class ARZEntry
         {
             // This is when it get's weird:
             // try compacting multiple empty strings to ;;                
-            List<string> cstrs = new List<string>();
-            string accum = "";
-            for (int i = 0; i < strs.Length; i++) // 
+            var cstrs = new List<string>();
+            var accum = "";
+            for (var i = 0; i < strs.Length; i++) // 
             {
                 if (strs[i] == "")
                 {
@@ -756,10 +743,10 @@ public class ARZEntry
             strs = cstrs.ToArray<string>();
         }
 
-        float fval = (float)0.0;
-        int[] nvalues = new int[strs.Length];
+        var fval = (float)0.0;
+        var nvalues = new int[strs.Length];
 
-        for (int i = 0; i < strs.Length; i++)
+        for (var i = 0; i < strs.Length; i++)
         {               
             switch (dtype)
             {
@@ -834,10 +821,10 @@ public class ARZEntry
     public override string ToString()
     {
         if (StrTable == null) return "";
-        StringBuilder sb = new StringBuilder();
+        var sb = new StringBuilder();
         sb.Append(StrTable[dstrid]).Append(',');
-        bool firstentry = true;
-        foreach (int value in values)
+        var firstentry = true;
+        foreach (var value in values)
         {
             if (!firstentry) sb.Append(";");
             switch (dtype)
@@ -877,21 +864,20 @@ public class ARZHeader
 
     public ARZHeader(Stream astream)
     {
-        using (BinaryReader br = new BinaryReader(astream, Encoding.ASCII, true))
-            ReadBytes(br);
+        using var br = new BinaryReader(astream, Encoding.ASCII, true);
+        ReadBytes(br);
     }
 
-    public void WriteToStream(Stream astream) {
-        using (BinaryWriter bw = new BinaryWriter(astream, Encoding.ASCII, true))
-        {
-            bw.Write(Unknown);
-            bw.Write(Version);
-            bw.Write(RecordTableStart);
-            bw.Write(RecordTableSize);
-            bw.Write(RecordTableEntries);
-            bw.Write(StringTableStart);
-            bw.Write(StringTableSize);
-        }
+    public void WriteToStream(Stream astream)
+    {
+        using var bw = new BinaryWriter(astream, Encoding.ASCII, true);
+        bw.Write(Unknown);
+        bw.Write(Version);
+        bw.Write(RecordTableStart);
+        bw.Write(RecordTableSize);
+        bw.Write(RecordTableEntries);
+        bw.Write(StringTableStart);
+        bw.Write(StringTableSize);
     }
 
     public void ReadBytes(BinaryReader bytes)

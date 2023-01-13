@@ -6,11 +6,11 @@ namespace ArzEdit.Service;
 public class TemplateNode
 {
     public static readonly TemplateNode TemplateNameVar;
-    public string TemplateFile = null;
-    public TemplateNode parent = null;
+    public string TemplateFile;
+    public TemplateNode parent;
     public string kind = "";
     public Dictionary<string, string> values = new Dictionary<string, string>();
-    public SortedDictionary<string, TemplateNode> varsearch = null;
+    public SortedDictionary<string, TemplateNode> varsearch;
     public List<TemplateNode> subitems = new List<TemplateNode>();
     public List<TemplateNode> includes = new List<TemplateNode>();
 
@@ -42,7 +42,7 @@ public class TemplateNode
 
     public int ParseNode(string[] parsestrings, int parsestart = 0)
     {
-        int i = parsestart;
+        var i = parsestart;
         while (string.IsNullOrWhiteSpace(parsestrings[i])) i++;
         kind = (parsestrings[i++].Trim().ToLower()); // Check for proper kind
         while (parsestrings[i].Trim() != "{") i++; // Find Opening bracket
@@ -53,14 +53,14 @@ public class TemplateNode
             if (string.IsNullOrWhiteSpace(parsestrings[i])) { i++; continue; }
             if (parsestrings[i].Trim().Contains('='))
             { // This is entry value
-                string[] sval = parsestrings[i].Split('=');
-                string akey = (sval[0].Trim());
-                string aval = (sval[1].Trim().Trim('"'));
+                var sval = parsestrings[i].Split('=');
+                var akey = (sval[0].Trim());
+                var aval = (sval[1].Trim().Trim('"'));
                 values[akey] = aval;
             }
             else
             { // subitem
-                TemplateNode sub = new TemplateNode(this);
+                var sub = new TemplateNode(this);
                 i = sub.ParseNode(parsestrings, i);
                 subitems.Add(sub);
             }
@@ -71,9 +71,9 @@ public class TemplateNode
 
     public List<TemplateNode> findValue(string aval)
     {
-        List<TemplateNode> res = new List<TemplateNode>();
+        var res = new List<TemplateNode>();
         if (values.ContainsValue(aval)) res.Add(this);
-        foreach (TemplateNode sub in subitems)
+        foreach (var sub in subitems)
         {
             res.AddRange(sub.findValue(aval));
         }
@@ -94,7 +94,7 @@ public class TemplateNode
         }
         // Not this, recurse subitems:
         TemplateNode res = null;
-        foreach (TemplateNode sub in subitems)
+        foreach (var sub in subitems)
         {
             res = sub.FindVariable(aname);
             if (res != null)
@@ -104,7 +104,7 @@ public class TemplateNode
             }
         }
         // No entry in subitems, check includes
-        foreach (TemplateNode incl in includes)
+        foreach (var incl in includes)
         {
             res = incl.FindVariable(aname);
             if (res != null)
@@ -119,11 +119,11 @@ public class TemplateNode
 
     public void FillIncludes(Dictionary<string, TemplateNode> alltempl)
     {
-        foreach (TemplateNode sub in subitems)
+        foreach (var sub in subitems)
         {
             if (sub.kind == "variable" && sub.values.ContainsKey("type") && sub.values["type"] == "include")
             {
-                string incstr = sub.values.ContainsKey("value") ? sub.values["value"] : "";
+                var incstr = sub.values.ContainsKey("value") ? sub.values["value"] : "";
                 if (incstr == "")
                     incstr = sub.values.ContainsKey("defaultValue") ? sub.values["defaultValue"] : "";
                 incstr = incstr.ToLower().Replace("%template_dir%", "").Replace(Path.DirectorySeparatorChar, '/');
@@ -132,7 +132,7 @@ public class TemplateNode
                 {
                     // Console.WriteLine("Include {0}", incstr);
                     // Check for cycles
-                    TemplateNode itemplate = alltempl[incstr];
+                    var itemplate = alltempl[incstr];
                     // DEBUG:
                     if (itemplate == this || includes.Contains(itemplate))
                         Logger.Log.LogWarning("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
@@ -141,9 +141,9 @@ public class TemplateNode
                 }
                 else
                 {
-                    TemplateNode tproot = this;
+                    var tproot = this;
                     while (tproot.parent != null) tproot = tproot.parent;
-                    string intemplate = alltempl.First(t => t.Value == tproot).Key;
+                    var intemplate = alltempl.First(t => t.Value == tproot).Key;
                     // Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate); // Debug
                     Logger.Log.LogInformation("Cannot find include {0} referenced in {1}", incstr, intemplate);
                 }
