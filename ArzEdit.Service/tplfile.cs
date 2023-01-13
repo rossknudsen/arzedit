@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Extensions.Logging;
 
 namespace arzedit
 {
@@ -138,7 +139,7 @@ namespace arzedit
                         TemplateNode itemplate = alltempl[incstr];
                         // DEBUG:
                         if (itemplate == this || includes.Contains(itemplate))
-                            Program.Log.Warn("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
+                            Logger.Log.LogWarning("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
                            // Console.WriteLine("WARNING: When parsing template {0} include \"{1}\" found out it's already included by another file, include might be cyclic.", GetTemplateFile(), incstr);
                         includes.Add(itemplate);
                     }
@@ -148,7 +149,7 @@ namespace arzedit
                         while (tproot.parent != null) tproot = tproot.parent;
                         string intemplate = alltempl.First(t => t.Value == tproot).Key;
                         // Console.WriteLine("Cannot find include {0} referenced in {1}", incstr, intemplate); // Debug
-                        Program.Log.Info("Cannot find include {0} referenced in {1}", incstr, intemplate);
+                        Logger.Log.LogInformation("Cannot find include {0} referenced in {1}", incstr, intemplate);
                     }
                 }
                 else if (sub.kind == "group")

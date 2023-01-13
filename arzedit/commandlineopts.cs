@@ -141,8 +141,8 @@ namespace arzedit
     [Verb("unarc", HelpText = "Unpack arc file(s)")]
     class UnarcOptions
     {
-        [Option(typeof(List<string>))]
-        public List<string> ArcFiles { get; set; }
+        [Option]
+        public string[] ArcFiles { get; set; }
 
         [Option('o', "out-path", HelpText = "Path where to store unpacked files")]
         public string OutPath { get; set; }

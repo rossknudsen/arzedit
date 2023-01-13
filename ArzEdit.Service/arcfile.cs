@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using LZ4;
+using Microsoft.Extensions.Logging;
 
 namespace arzedit
 {
@@ -105,7 +106,7 @@ namespace arzedit
         {
             if (smem == null)
             {
-                Program.Log.Warn("ARCStringTable => GetStringAt: Trying to read uninitialized stringtable!");
+                Logger.Log.LogWarning("ARCStringTable => GetStringAt: Trying to read uninitialized stringtable!");
                 return "";
             }
             

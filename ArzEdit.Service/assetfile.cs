@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace arzedit
 {
@@ -201,7 +202,7 @@ namespace arzedit
             TextureCompilerP.StartInfo.FileName = Path.Combine(toolfolder, "TextureCompiler.exe");
             TextureCompilerP.StartInfo.Arguments = arguments;
             // Console.WriteLine(TextureCompilerP.StartInfo.Arguments);
-            Program.Log.Debug("Call: TextureCompiler.exe {0}", TextureCompilerP.StartInfo.Arguments);
+            Logger.Log.LogDebug("Call: TextureCompiler.exe {0}", TextureCompilerP.StartInfo.Arguments);
             TextureCompilerP.StartInfo.UseShellExecute = false;
             TextureCompilerP.StartInfo.RedirectStandardOutput = true;
             TextureCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -244,7 +245,7 @@ namespace arzedit
                 MapCompilerP.StartInfo.FileName = Path.Combine(toolfolder, "MapCompiler.exe");
                 MapCompilerP.StartInfo.Arguments = string.Format("\"{0}\" \"{1}\" \"{2}\"", srcm, srcfm, tgtm);
                 // Console.WriteLine(MapCompilerP.StartInfo.Arguments);
-                Program.Log.Debug("Call: MapCompiler.exe {0}", MapCompilerP.StartInfo.Arguments);
+                Logger.Log.LogDebug("Call: MapCompiler.exe {0}", MapCompilerP.StartInfo.Arguments);
                 MapCompilerP.StartInfo.UseShellExecute = false;
                 MapCompilerP.StartInfo.RedirectStandardOutput = true;
                 MapCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -303,7 +304,7 @@ namespace arzedit
                     mifparam = string.Format(" -mif \"{0}\" \"{1}\"", msh.miffile, srcfoldermod);
                 // ModelCompilerP.StartInfo.Arguments = string.Format("\"{0}\" {1} -mif \"{2}\" \"{3}\" \"{4}\"", tempfile.Replace(Path.DirectorySeparatorChar, '/'), addFlags, msh.miffile, srcfoldermod, tgtm);
                 ModelCompilerP.StartInfo.Arguments = string.Format("\"{0}\"{1}{2} \"{3}\"", tempfile.Replace(Path.DirectorySeparatorChar, '/'), addFlags, mifparam, tgtm);
-                Program.Log.Debug("Call: ModelCompiler.exe {0}", ModelCompilerP.StartInfo.Arguments); // DEBUG:
+                Logger.Log.LogDebug("Call: ModelCompiler.exe {0}", ModelCompilerP.StartInfo.Arguments); // DEBUG:
                 ModelCompilerP.StartInfo.UseShellExecute = false;
                 ModelCompilerP.StartInfo.RedirectStandardOutput = true;
                 ModelCompilerP.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
@@ -325,11 +326,11 @@ namespace arzedit
             }
             else if (Type == AssetType.Unknown)
             {
-                Program.Log.Warn("Cannot read asset {0}, unknown type \"{1}\" or not implemented. Please use AssetManager.", this.resname, new string(TypeMagick));
+                Logger.Log.LogWarning("Cannot read asset {0}, unknown type \"{1}\" or not implemented. Please use AssetManager.", this.resname, new string(TypeMagick));
             }
             else
             {
-                Program.Log.Debug("Asset \"{0}\" of type {1} slipped through build sieve.", resname, new string(TypeMagick));
+                Logger.Log.LogDebug("Asset \"{0}\" of type {1} slipped through build sieve.", resname, new string(TypeMagick));
             }
         }
     }

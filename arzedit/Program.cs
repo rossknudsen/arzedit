@@ -1,12 +1,6 @@
-﻿using System;
-using System.IO;
-using System.Collections.Generic;
-using LZ4;
-using System.Linq;
 using System.Text;
 using CommandLine;
-using CommandLine.Text;
-using NLog;
+using Microsoft.Extensions.Logging;
 
 namespace arzedit
 {   
@@ -14,18 +8,22 @@ namespace arzedit
     {
         const string VERSION = "0.2b5";
         static byte[] footer = new byte[16];
-        public static Logger Log = LogManager.GetCurrentClassLogger();
+        private static readonly ILoggerFactory _loggerFactory = LoggerFactory.Create(x =>
+        {
+            x.AddConsole();
+        });
+        public static ILogger Log = _loggerFactory.CreateLogger<Program>();
         public static List<string> strtable = null;
         public static ARZStrings astrtable = null;
         public static List<int> strrefcount = null;
         public static SortedDictionary<string, int> strsearchlist = null;
         public static HashSet<string> resfiles = null;
         public static HashSet<string> dbrfiles = null;
+
         static int Main(string[] args)
         {
             if (args.Length == 0)
             {
-                PrintUsage();
                 return 1;
             }
 
@@ -44,9 +42,8 @@ namespace arzedit
                 .WithParsed<BuildOptions>(x => ProcessBuildVerb(x))
                 .WithParsed<UnarcOptions>(x => ProcessUnarcVerb(x))
                 .WithParsed<ArcOptions>(x => ProcessArcVerb(x))
-                .WithNotParsed(errors =>
+                .WithNotParsed(_ =>
                 {
-                    PrintUsage();
                     result = 1;
                 });
 
@@ -130,7 +127,7 @@ namespace arzedit
                             catch (Exception e)
                             {
                                 // Console.WriteLine("Error writing file \"{0}\", Message: ", filename, e.Message);
-                                Log.Error("Could not write file \"{0}\", Message: ", filename, e.Message);
+                                Log.LogError("Could not write file \"{0}\", Message: ", filename, e.Message);
                                 return 1;
                             }
                         }
@@ -149,7 +146,7 @@ namespace arzedit
         {
             if (!Directory.Exists(assetfolder))
             {
-                Log.Warn("No asset folder {0}. Skipping compilation.", assetfolder);
+                Log.LogWarning("No asset folder {0}. Skipping compilation.", assetfolder);
                 return 1;
             }
             string[] assetfiles = Directory.GetFiles(assetfolder, "*", SearchOption.AllDirectories);
@@ -168,31 +165,35 @@ namespace arzedit
 
         static int ProcessBuildVerb(BuildOptions opt)
         {
-            // Add File logger:
-            if (!string.IsNullOrEmpty(opt.LogFile)) {
-                File.AppendAllText(opt.LogFile, string.Format("Build process started at {0}\n", DateTime.Now));
-                var fileTarget = new NLog.Targets.FileTarget();
-                LogManager.Configuration.AddTarget("file", fileTarget);
-                fileTarget.FileName = Path.GetFullPath(opt.LogFile);
-                fileTarget.Layout = "${level}: ${message}";
-                var filerule = new NLog.Config.LoggingRule("*", LogLevel.Debug, fileTarget);
-                LogManager.Configuration.LoggingRules.Add(filerule);
-            }
+            //// Add File logger:
+            //if (!string.IsNullOrEmpty(opt.LogFile)) {
+            //    File.AppendAllText(opt.LogFile, string.Format("Build process started at {0}\n", DateTime.Now));
+            //    var fileTarget = new NLog.Targets.FileTarget();
+            //    LogManager.Configuration.AddTarget("file", fileTarget);
+            //    fileTarget.FileName = Path.GetFullPath(opt.LogFile);
+            //    fileTarget.Layout = "${level}: ${message}";
+            //    var filerule = new NLog.Config.LoggingRule("*", LogLevel.Debug, fileTarget);
+            //    LogManager.Configuration.LoggingRules.Add(filerule);
+            //}
 
-            // Reconfigure console logger:
-            if (opt.EnableVerbose)
-                LogManager.Configuration.LoggingRules.First().EnableLoggingForLevels(LogLevel.Debug, LogLevel.Fatal);
-            if (opt.EnableSilent)
-            {
-                NLog.Config.LoggingRule rule = LogManager.Configuration.LoggingRules.First();
-                rule.DisableLoggingForLevel(LogLevel.Trace);
-                rule.DisableLoggingForLevel(LogLevel.Debug);
-                rule.DisableLoggingForLevel(LogLevel.Info);
-                rule.DisableLoggingForLevel(LogLevel.Warn);
-            }
+            //// Reconfigure console logger:
+            //if (opt.EnableVerbose)
+            //{
+            //    LogManager.Configuration.LoggingRules.First().EnableLoggingForLevels(LogLevel.Debug, LogLevel.Fatal);
+            //}
+            //if (opt.EnableSilent)
+            //{
+            //    NLog.Config.LoggingRule rule = LogManager.Configuration.LoggingRules.First();
+            //    rule.DisableLoggingForLevel(LogLevel.Trace);
+            //    rule.DisableLoggingForLevel(LogLevel.Debug);
+            //    rule.DisableLoggingForLevel(LogLevel.Info);
+            //    rule.DisableLoggingForLevel(LogLevel.Warn);
+            //}
 
-            if (!string.IsNullOrEmpty(opt.LogFile) || opt.EnableVerbose || opt.EnableSilent)
-                LogManager.ReconfigExistingLoggers();
+            //if (!string.IsNullOrEmpty(opt.LogFile) || opt.EnableVerbose || opt.EnableSilent)
+            //{
+            //    LogManager.ReconfigExistingLoggers();
+            //}
             
             // Build begins
             DateTime beginbuild = DateTime.Now;
@@ -206,7 +207,7 @@ namespace arzedit
                 gamefolder = string.IsNullOrEmpty(opt.GameFolder) ? Path.GetFullPath(".") : Path.GetFullPath(opt.GameFolder); // TODO: Make game folder detection more robust, check dir one level up
             } catch {
                 // Console.WriteLine("Error parsing parameters, check for escape characters, especially \\\" (folders should not end in \\).");
-                Log.Error("Error parsing parameters, check for escape characters, especially \\\" (folders should not end in \\).");
+                Log.LogError("Error parsing parameters, check for escape characters, especially \\\" (folders should not end in \\).");
             }
             if (!File.Exists(Path.Combine(gamefolder, "Grim Dawn.exe"))) {
                 Console.WriteLine("Need correct game folder with mod tools (use parameter -g)");
@@ -217,7 +218,7 @@ namespace arzedit
                 // Assets
                 Console.Write("Compiling Assets ... ");
                 if (BuildAssets(Path.Combine(packfolder, "assets"), Path.Combine(packfolder, "source"), Path.Combine(buildfolder, "resources"), gamefolder) != 0)
-                    Log.Warn("Error building assets.");
+                    Log.LogWarning("Error building assets.");
                 Console.WriteLine("Done");
             }
             //*
@@ -281,7 +282,7 @@ namespace arzedit
                 catch (Exception e)
                 {
                     // Console.WriteLine("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
-                    Log.Error("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
+                    Log.LogError("Error parsing templates, reason - {0}\nStackTrace:\n{1}", e.Message, e.StackTrace);
                     return 1;
                 }
 
@@ -309,7 +310,7 @@ namespace arzedit
                 catch (Exception e)
                 {
                     // Console.WriteLine("Error listing *.dbr files, reason - {0} ", e.Message);
-                    Log.Error("Error listing *.dbr files, reason - {0} ", e.Message);
+                    Log.LogError("Error listing *.dbr files, reason - {0} ", e.Message);
                     return 1;
                 }
 
@@ -333,7 +334,7 @@ namespace arzedit
                 catch (Exception e)
                 {
                     //Console.WriteLine("Error while parsing records. Message: {0}\nStack Trace:\n{1}", e.Message, e.StackTrace);
-                    Log.Error("Error while parsing records. Message: {0}\nStack Trace:\n{1}", e.Message, e.StackTrace);
+                    Log.LogError("Error while parsing records. Message: {0}\nStack Trace:\n{1}", e.Message, e.StackTrace);
                     // Console.ReadKey(true);
                     return 1;
                 }
@@ -361,12 +362,12 @@ namespace arzedit
                     foreach (string resdir in resdirs)
                     {
                         string outfile = Path.Combine(resfolder, Path.GetFileName(resdir) + ".arc");
-                        Log.Info("Packing folder \"{0}\", to: \"{1}\"", resdir, outfile);
+                        Log.LogInformation("Packing folder \"{0}\", to: \"{1}\"", resdir, outfile);
                         ArcFolder(resdir, "*", outfile);
                     }
                 }
                 else {
-                    Log.Warn("Resource folder {0} not found, skipping.", resfolder);
+                    Log.LogWarning("Resource folder {0} not found, skipping.", resfolder);
                 }
                 Console.WriteLine("Done");
             }
@@ -390,7 +391,6 @@ namespace arzedit
             if (string.IsNullOrEmpty(opt.OutputFile))
             {
                 Console.WriteLine("Please specify output file as second parameter!");
-                PrintUsage();
                 return 1;
             }
 
@@ -531,7 +531,7 @@ namespace arzedit
             if (!string.IsNullOrEmpty(opt.OutPath)) outpath = opt.OutPath;
             outpath = Path.GetFullPath(outpath);
 
-            if (opt.ArcFiles.Count == 0)
+            if (opt.ArcFiles.Length == 0)
             {
                 Console.WriteLine("Please supply at least one arc file for extraction!");
                 return 1;
@@ -541,7 +541,7 @@ namespace arzedit
             {
                 // Console.WriteLine(arcfilename);
                 string arcsub = "";
-                if (opt.ArcFiles.Count > 1 || string.IsNullOrEmpty(opt.OutPath))
+                if (opt.ArcFiles.Length > 1 || string.IsNullOrEmpty(opt.OutPath))
                     arcsub = Path.Combine(outpath, Path.GetFileNameWithoutExtension(arcfilename));
                 else
                     arcsub = outpath;
@@ -572,7 +572,7 @@ namespace arzedit
                 if (!string.IsNullOrEmpty(opt.OutFile))
                     outfile = Path.GetFullPath(opt.OutFile);
                 // Console.WriteLine("Packing \"{0}\" mask: \"{1}\", out: \"{2}\"", afolder, opt.FileMask, outfile);
-                Log.Info("Packing \"{0}\" mask: \"{1}\", out: \"{2}\"", afolder, opt.FileMask, outfile);
+                Log.LogInformation("Packing \"{0}\" mask: \"{1}\", out: \"{2}\"", afolder, opt.FileMask, outfile);
                 ArcFolder(afolder, opt.FileMask, outfile);
             } else return 1;
             return 0;
@@ -659,7 +659,7 @@ namespace arzedit
                 if (!Directory.Exists(Path.Combine(tbasepath, "database")) && !Directory.Exists(Path.Combine(tbasepath, "templates")))
                 {
                     // Console.WriteLine("Possibly wrong template base folder \"{0}\", does not contain database or templates folder!", tbasepath);
-                    Log.Info("Possibly wrong template base folder \"{0}\", does not contain database or templates folder!", tbasepath);
+                    Log.LogInformation("Possibly wrong template base folder \"{0}\", does not contain database or templates folder!", tbasepath);
                 }
 
                 string[] alltemplates = Directory.GetFiles(tfullpath, "*.tpl", SearchOption.AllDirectories);
@@ -678,7 +678,7 @@ namespace arzedit
                     TemplateNode ntemplate = new TemplateNode(null, tpath);
                     ntemplate.ParseNode(tstrings, 0);
                     if (templates.ContainsKey(tpath))
-                        Log.Debug("Template \"{0}\" already parsed, overriding with {1}", tpath, tfile); // TODO: Change to debug
+                        Log.LogDebug("Template \"{0}\" already parsed, overriding with {1}", tpath, tfile); // TODO: Change to debug
                         //Console.WriteLine("Template \"{0}\" already parsed, overriding with {1}", tpath, tfile); // DEBUG
                     templates[tpath] = ntemplate;
                 }
@@ -721,60 +721,60 @@ namespace arzedit
             }
         }
 
-        static void PrintUsage()
-        {
-            Console.WriteLine("\nGrim Dawn Arz Editor, v{0}", VERSION);
-            Console.WriteLine("\nUsage:");
-            Console.WriteLine();
-            Console.WriteLine("{0} <build|extract|arc|unarc> <suboptions>\n", Path.GetFileName(System.Reflection.Assembly.GetExecutingAssembly().Location));
-            Console.WriteLine("build <mod base> [<build path>] [-g <Grim Dawn folder>] [-t <additional template folders>] [-ADRvs] [-l <log file>]");
-            Console.WriteLine("  <mod base>         folder that contains mod sources");
-            Console.Write("  <build path>       folder where to put built mod files");
-            var ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new BuildOptions());
-            Console.WriteLine(ht);
-            /*
-            Console.WriteLine("pack <mod base> <output file> [-t <template base1> [<template base2> ...]] [-yr]\n");
-            Console.WriteLine("  <mod base>         mod base path where loose *.dbr and *.tpl files reside");
-            Console.Write("                     usually has /database/ and /resources/ folders");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new PackOptions());
-            Console.WriteLine(ht);
-            */
-            /*
-            Console.Write("set <input file> [-o <output file>] [-y] [-r <record> {-e <entry1> [<entry2> ...] | -f <record file>}] [-p <patchfile1> [<patchfile2> ...]] [-b <base folder> [-s <subfolder>]] ");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new SetOptions());
-            Console.WriteLine(ht);
-            Console.WriteLine("get <input file> -r <record> [-e <entry1> [<entry2 ...>]]");
-            Console.Write("\nNot implemented yet!;");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new GetOptions());
-            Console.WriteLine(ht);
-            */
-            Console.WriteLine("extract <input file> [<output path>] [-y]");
-            Console.WriteLine("<input file>         arz file to be extracted");
-            Console.Write("<output path>        where to store dbr files");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new ExtractOptions());
-            Console.WriteLine(ht);
-            Console.Write("arc <arc folder> <arc file> [-m <file mask>]");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new ArcOptions());
-            Console.WriteLine(ht);
-            Console.Write("unarc <arc file1> [<arc file2> ...] [-o <output path>]");
-            ht = new HelpText();
-            ht.AddDashesToOption = true;
-            ht.AddOptions(new UnarcOptions());
-            Console.WriteLine(ht);
-            // Console.ReadKey(true);
-        }
+        //static void PrintUsage()
+        //{
+        //    Console.WriteLine("\nGrim Dawn Arz Editor, v{0}", VERSION);
+        //    Console.WriteLine("\nUsage:");
+        //    Console.WriteLine();
+        //    Console.WriteLine("{0} <build|extract|arc|unarc> <suboptions>\n", Path.GetFileName(System.Reflection.Assembly.GetExecutingAssembly().Location));
+        //    Console.WriteLine("build <mod base> [<build path>] [-g <Grim Dawn folder>] [-t <additional template folders>] [-ADRvs] [-l <log file>]");
+        //    Console.WriteLine("  <mod base>         folder that contains mod sources");
+        //    Console.Write("  <build path>       folder where to put built mod files");
+        //    var ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new BuildOptions());
+        //    Console.WriteLine(ht);
+        //    /*
+        //    Console.WriteLine("pack <mod base> <output file> [-t <template base1> [<template base2> ...]] [-yr]\n");
+        //    Console.WriteLine("  <mod base>         mod base path where loose *.dbr and *.tpl files reside");
+        //    Console.Write("                     usually has /database/ and /resources/ folders");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new PackOptions());
+        //    Console.WriteLine(ht);
+        //    */
+        //    /*
+        //    Console.Write("set <input file> [-o <output file>] [-y] [-r <record> {-e <entry1> [<entry2> ...] | -f <record file>}] [-p <patchfile1> [<patchfile2> ...]] [-b <base folder> [-s <subfolder>]] ");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new SetOptions());
+        //    Console.WriteLine(ht);
+        //    Console.WriteLine("get <input file> -r <record> [-e <entry1> [<entry2 ...>]]");
+        //    Console.Write("\nNot implemented yet!;");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new GetOptions());
+        //    Console.WriteLine(ht);
+        //    */
+        //    Console.WriteLine("extract <input file> [<output path>] [-y]");
+        //    Console.WriteLine("<input file>         arz file to be extracted");
+        //    Console.Write("<output path>        where to store dbr files");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new ExtractOptions());
+        //    Console.WriteLine(ht);
+        //    Console.Write("arc <arc folder> <arc file> [-m <file mask>]");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new ArcOptions());
+        //    Console.WriteLine(ht);
+        //    Console.Write("unarc <arc file1> [<arc file2> ...] [-o <output path>]");
+        //    ht = new HelpText();
+        //    ht.AddDashesToOption = true;
+        //    ht.AddOptions(new UnarcOptions());
+        //    Console.WriteLine(ht);
+        //    // Console.ReadKey(true);
+        //}
     }
     
 }

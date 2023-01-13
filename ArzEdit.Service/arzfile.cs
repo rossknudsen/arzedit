@@ -5,6 +5,7 @@ using System.Linq;
 using System.Diagnostics;
 using LZ4;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace arzedit {
     // Classes responsible for Reading/Writing arz database, and database objects themselves
@@ -187,7 +188,7 @@ namespace arzedit {
                 while (pos < size)
                 {
                     int count = br.ReadInt32(); pos += 4; // Read Count
-                    // Program.Log.Trace("Block at pos: {0}; Count: {1}", pos, count);
+                    // Logger.Log.Trace("Block at pos: {0}; Count: {1}", pos, count);
                     strtable.Capacity += count;
                     for (int i = 0; i < count; i++)
                     {
@@ -294,7 +295,7 @@ namespace arzedit {
                     catch (KeyNotFoundException e)
                     {
                         // Console.WriteLine("Template file \"{0}\" used by record {1} not found!", eexpl[1], rname);
-                        Program.Log.Error("Template file \"{0}\" used by record {1} not found!", eexpl[1], rname);
+                        Logger.Log.LogError("Template file \"{0}\" used by record {1} not found!", eexpl[1], rname);
                         throw e;
                     }
                     break;
@@ -302,7 +303,7 @@ namespace arzedit {
             }
             if (tpl == null)
             {
-                Program.Log.Error("Record {0} has no template!", rname); // DEBUG
+                Logger.Log.LogError("Record {0} has no template!", rname); // DEBUG
                 throw new Exception(string.Format("Record {0} has no template!", rname));
             }
             foreach (string estr in rstrings)
@@ -313,10 +314,10 @@ namespace arzedit {
                 {
                     // Console.WriteLine("Record \"{0}\" - Malformed assignment string \"{1}\"", Name, estr);
                     if (eexpl.Length == 2)
-                        Program.Log.Warn("Record \"{0}\" - Malformed assignment string \"{1}\", No comma at the end, Recoverable.", Name, estr); // DEBUG:
+                        Logger.Log.LogWarning("Record \"{0}\" - Malformed assignment string \"{1}\", No comma at the end, Recoverable.", Name, estr); // DEBUG:
                     else
                     {
-                        Program.Log.Warn("Record \"{0}\" - Malformed assignment string \"{1}\", Skipping", Name, estr);
+                        Logger.Log.LogWarning("Record \"{0}\" - Malformed assignment string \"{1}\", Skipping", Name, estr);
                         continue;
                     }
                 }
@@ -325,7 +326,7 @@ namespace arzedit {
                 string defaultsto = "";
                 if (string.IsNullOrEmpty(varname))
                 {
-                    Program.Log.Warn("Record \"{0}\" - Has empty entry name, Skipping", Name);
+                    Logger.Log.LogWarning("Record \"{0}\" - Has empty entry name, Skipping", Name);
                     continue;
                 }
                 if (varname == "templateName")
@@ -341,7 +342,7 @@ namespace arzedit {
                     {
                         vart = tpl?.FindVariable(varname);
                         if (vart == null) { // Includes has given up, search whole template database
-                            Program.Log.Debug("Entry {0}/{1} template not found in includes, looking up globally.", rname, varname);
+                            Logger.Log.Debug("Entry {0}/{1} template not found in includes, looking up globally.", rname, varname);
                             foreach (TemplateNode otpl in templates.Values) {                                
                                 if ((vart = otpl.FindVariable(varname)) != null)
                                     break;
@@ -356,7 +357,7 @@ namespace arzedit {
                         if (entryset.Contains(varname))
                         {
                             // Console.WriteLine("Record {0} duplicate entry {1} - Overwriting.", rname, varname); // TODO: Do not ignore, Overwrite
-                            Program.Log.Info("Record {0} duplicate entry {1} - Overwriting.", rname, varname);
+                            Logger.Log.LogInformation("Record {0} duplicate entry {1} - Overwriting.", rname, varname);
                             ARZEntry entry = entries.Find(e => e.Name == varname);
                             entry.TryAssign(varname, vvalue, strtable, defaultsto);
                             continue;
@@ -378,7 +379,7 @@ namespace arzedit {
                     }
                     else {
                         // Console.WriteLine("Entry {0} in {1} has no template.", varname, rname);
-                        Program.Log.Debug("Entry {0}/{1} template not found. Skipping.", rname, varname);
+                        Logger.Log.LogDebug("Entry {0}/{1} template not found. Skipping.", rname, varname);
                         // notfoundvars.Add(varname);
                     }
                 }
@@ -489,7 +490,7 @@ namespace arzedit {
                     if (estring.Contains('\n') || estring.Contains(Environment.NewLine))
                     {
                         // Console.WriteLine("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
-                        Program.Log.Info("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
+                        Logger.Log.LogInformation("Record \"{0}\" entry \"{1}\" contains newline(s), fixing.", strtable[rfid], strtable[etr.dstrid]);
                         estring = System.Text.RegularExpressions.Regex.Replace(estring, @"\r\n?|\n", "");
                     }
                     sr.WriteLine(estring);
@@ -585,7 +586,7 @@ namespace arzedit {
             catch (KeyNotFoundException e)
             {
                 // Console.WriteLine("ERROR: Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
-                Program.Log.Error("Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
+                Logger.Log.LogError("Template {0} does not contain value type for entry {1}! I'm not guessing it.", tpl.GetTemplateFile(), entryname);
                 throw e; // rethrow
             }
 
@@ -624,7 +625,7 @@ namespace arzedit {
                     break;
                 default:
                     // Console.WriteLine("ERROR: Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
-                    Program.Log.Error("Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
+                    Logger.Log.LogError("Template {0} has unknown type {1} for entry {1}", tpl.GetTemplateFile(), tpl.values["type"], entryname);
                     throw new Exception("Unknown variable type");
                     // break;
             }
@@ -697,7 +698,7 @@ namespace arzedit {
             if (strtable[dstrid] != entryname)
             {
                 // Console.WriteLine("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
-                Program.Log.Warn("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
+                Logger.Log.LogWarning("Cannot assign \"{0}\" to \"{1}\" field (entry names differ).", entryname, strtable[dstrid]);
                 return false;
             }
             if (string.IsNullOrWhiteSpace(valuestr))
@@ -774,7 +775,7 @@ namespace arzedit {
                             {
                                 nvalues[i] = (int)fval;
                                 // Console.WriteLine("Int value represented as float {0} in {1}, truncating", fval, parent.Name); // DEBUG
-                                Program.Log.Debug("Int value represented as float \"{0:F}\" in {1}/{2}, truncating", fval, parent.Name, entryname);
+                                Logger.Log.LogDebug("Int value represented as float \"{0:F}\" in {1}/{2}, truncating", fval, parent.Name, entryname);
                             } else
                             if (strs[i].StartsWith("0x"))
                             {
@@ -785,7 +786,7 @@ namespace arzedit {
                                 catch
                                 {
                                     // Console.WriteLine("Could not parse Hex number {0}", strs[i]); // DEBUG
-                                    Program.Log.Debug("Could not parse Hex number \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
+                                    Logger.Log.LogDebug("Could not parse Hex number \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
                                     nvalues[i] = 0;
                                 }
                             }
@@ -794,7 +795,7 @@ namespace arzedit {
                                 // DEBUG:
                                 // Console.WriteLine("Record {3} Entry {0} Error parsing integer value #{1}=\"{2}\", Defaulting to 0", Name, i, strs[i], parent.Name);
                                 // return false;
-                                Program.Log.Debug("Error parsing integer value \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
+                                Logger.Log.LogDebug("Error parsing integer value \"{0}\" in {1}/{2}", strs[i], parent.Name, entryname);
                                 nvalues[i] = 0; // Set default
                             }
                         }
@@ -804,7 +805,7 @@ namespace arzedit {
                         {
                             // Console.WriteLine("Error parsing float value #{0}=\"{1}\", Defaulting to 0.0", i, strs[i]); // DEBUG
                             // return false;
-                            Program.Log.Debug("Error parsing float value \"{0}\" in {1}/{2}, Defaulting to 0.0", strs[i], parent.Name, entryname);
+                            Logger.Log.LogDebug("Error parsing float value \"{0}\" in {1}/{2}, Defaulting to 0.0", strs[i], parent.Name, entryname);
                             nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(0.0), 0);
                         }
                         nvalues[i] = BitConverter.ToInt32(BitConverter.GetBytes(fval), 0);
@@ -818,14 +819,14 @@ namespace arzedit {
                         if (!int.TryParse(strs[i], out nvalues[i]) || nvalues[i] > 1)
                         {
                             // Console.WriteLine("Error parsing boolean value #{0}=\"{1}\", Defaulting to False", i, strs[i]); // DEBUG
-                            Program.Log.Debug("Error parsing boolean value \"{0}\" in {1}/{2}, Defaulting to False", strs[i], parent.Name, entryname);
+                            Logger.Log.LogDebug("Error parsing boolean value \"{0}\" in {1}/{2}, Defaulting to False", strs[i], parent.Name, entryname);
                             nvalues[i] = 0;
                             // return false;
                         }
                         break;
                     default:
                         // Console.WriteLine("Unknown data type in database"); // TODO: make more informative
-                        Program.Log.Warn("Unknown data type {2} for entry {0}/{1}", parent.Name, entryname, dtype);
+                        Logger.Log.LogWarning("Unknown data type {2} for entry {0}/{1}", parent.Name, entryname, dtype);
                         return false;
                 }
             }

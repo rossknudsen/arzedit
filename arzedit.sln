@@ -1,9 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26228.9
+# Visual Studio Version 17
+VisualStudioVersion = 17.3.32929.385
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "arzedit", "arzedit\arzedit.csproj", "{8CAD7F65-D6CF-498D-8A89-2634694F635E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ArzEdit.Service", "ArzEdit.Service\ArzEdit.Service.csproj", "{B332D039-25C7-476A-8718-A0905D8CE2F5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,8 +17,15 @@ Global
 		{8CAD7F65-D6CF-498D-8A89-2634694F635E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8CAD7F65-D6CF-498D-8A89-2634694F635E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8CAD7F65-D6CF-498D-8A89-2634694F635E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B332D039-25C7-476A-8718-A0905D8CE2F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B332D039-25C7-476A-8718-A0905D8CE2F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B332D039-25C7-476A-8718-A0905D8CE2F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B332D039-25C7-476A-8718-A0905D8CE2F5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {CB45931F-8A2B-40E7-9FD6-6600DFC003EF}
 	EndGlobalSection
 EndGlobal
