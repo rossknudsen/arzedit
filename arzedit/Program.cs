@@ -23,47 +23,34 @@ namespace arzedit
         public static HashSet<string> dbrfiles = null;
         static int Main(string[] args)
         {
-            var voptions = new VerbOptions();
-            string iVerb = ""; object iOpt = null;
-            if (args.Length > 0 && Parser.Default.ParseArguments(args, voptions, (verb, subOptions) => {
-                iVerb = verb; iOpt = subOptions;
-            }))
+            if (args.Length == 0)
             {
-                if (iVerb == "set")
-                {
-                    return ProcessSetVerb(iOpt as SetOptions);
-                }
-                else if (iVerb == "extract")
-                {
-                    return ProcessExtractVerb(iOpt as ExtractOptions);
-                }
-                else if (iVerb == "pack")
-                {
-                    return ProcessPackVerb(iOpt as PackOptions);
-                }
-                else if (iVerb == "build")
-                {
-                    return ProcessBuildVerb(iOpt as BuildOptions);
-                }
-                else if (iVerb == "get")
-                {
-                    GetOptions opt = iOpt as GetOptions;
-                    Console.WriteLine("Getting records is not implemented yet!");
-                    return 1;
-                }
-                else if (iVerb == "unarc")
-                {
-                    return ProcessUnarcVerb(iOpt as UnarcOptions);
-                }
-                else if (iVerb == "arc")
-                {
-                    return ProcessArcVerb(iOpt as ArcOptions);
-                }
-                return 1; // Should not ever be here, but just in case unknown verb pops up
-            } else {
                 PrintUsage();
                 return 1;
             }
+
+            var result = 0;
+
+            Parser.Default
+                .ParseArguments<SetOptions, GetOptions, ExtractOptions, PackOptions, BuildOptions, UnarcOptions, ArcOptions>(args)
+                .WithParsed<SetOptions>(x => ProcessSetVerb(x))
+                .WithParsed<GetOptions>(x =>
+                {
+                    Console.WriteLine("Getting records is not implemented yet!");
+                    result = 1;
+                })
+                .WithParsed<ExtractOptions>(x => ProcessExtractVerb(x))
+                .WithParsed<PackOptions>(x => ProcessPackVerb(x))
+                .WithParsed<BuildOptions>(x => ProcessBuildVerb(x))
+                .WithParsed<UnarcOptions>(x => ProcessUnarcVerb(x))
+                .WithParsed<ArcOptions>(x => ProcessArcVerb(x))
+                .WithNotParsed(errors =>
+                {
+                    PrintUsage();
+                    result = 1;
+                });
+
+            return result;
         }
 
         static int ProcessSetVerb(SetOptions opt)
